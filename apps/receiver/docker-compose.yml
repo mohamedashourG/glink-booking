@@ -1,0 +1,41 @@
+# Stand-alone Postgres + receiver. Brought up from apps/receiver/.
+#
+# cal.diy (which lives in a separate compose project) reaches the receiver
+# via http://host.docker.internal:8000/webhook — no shared docker network
+# required. We expose Postgres on host port 5433 to dodge the existing
+# project's :5432 binding.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: receiver
+      POSTGRES_PASSWORD: receiver
+      POSTGRES_DB: receiver
+    volumes:
+      - receiver-pg:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U receiver -d receiver"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  receiver:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://receiver:receiver@postgres:5432/receiver
+      CAL_WEBHOOK_SECRET: ${CAL_WEBHOOK_SECRET:?set CAL_WEBHOOK_SECRET in apps/receiver/.env}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  receiver-pg:

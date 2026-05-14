@@ -391,3 +391,42 @@ def update_event_type(
             "bookingFields": booking_fields,
         },
     )
+
+
+# ----- webhook registration --------------------------------------------------
+# A cal.diy webhook can be scoped per-event-type (eventTypeId set), per-team
+# (teamId set), or per-user (neither). We pick per-event-type to keep test
+# blast radius small. Requires the same NextAuth session as the rest of the
+# tRPC calls.
+
+# All four cal.diy trigger events that map to a booking lifecycle stage.
+BOOKING_TRIGGER_EVENTS = [
+    "BOOKING_CREATED",
+    "BOOKING_RESCHEDULED",
+    "BOOKING_CANCELLED",
+    "BOOKING_REJECTED",
+]
+
+
+def create_webhook(
+    session: CalWebSession,
+    *,
+    subscriber_url: str,
+    secret: str,
+    event_type_id: int | None = None,
+    triggers: list[str] | None = None,
+) -> str:
+    """Register a webhook; returns the webhook id."""
+    out = session.trpc_mutation(
+        "webhook",
+        "create",
+        {
+            "subscriberUrl": subscriber_url,
+            "eventTriggers": triggers or list(BOOKING_TRIGGER_EVENTS),
+            "active": True,
+            "payloadTemplate": None,
+            "secret": secret,
+            **({"eventTypeId": event_type_id} if event_type_id is not None else {}),
+        },
+    )
+    return str(out["id"])
