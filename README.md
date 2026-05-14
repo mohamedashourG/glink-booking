@@ -57,12 +57,22 @@ our standard policy:
 - 4-hour minimum booking notice
 - 60-day rolling booking window
 - booking questions: `name`, `email` (required), `Company`, `What would you like to discuss?`
+- a per-user webhook subscription pointing at the receiver, covering
+  `BOOKING_CREATED` / `RESCHEDULED` / `CANCELLED` / `REJECTED` (so every
+  booking on a provisioned client lands in the receiver's Postgres
+  automatically)
 
-Required env var:
+Required env vars:
 
 ```bash
 export CAL_WEB_BASE=http://localhost:3000
+# Webhook wiring — both required:
+export RECEIVER_WEBHOOK_URL=http://host.docker.internal:8000/webhook
+export CAL_WEBHOOK_SECRET=<same value as apps/receiver/.env CAL_WEBHOOK_SECRET>
 ```
+
+`CAL_WEBHOOK_SECRET` here MUST be the same value the receiver was
+started with. They sign and verify the same envelopes.
 
 Single client:
 

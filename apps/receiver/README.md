@@ -41,13 +41,11 @@ docker compose up -d --build
 curl -fsS http://localhost:8000/health     # → {"status":"ok"}
 ```
 
-The `CAL_WEBHOOK_SECRET` you generate must match the secret you give the
-cal.diy webhook when registering it (see the project root README for how
-provisioning will eventually create webhooks per client; right now you
-register one manually, scoped to the event type or user, with this same
-secret).
-
-cal.diy webhook URL to use when registering:
+The `CAL_WEBHOOK_SECRET` you generate here must match the
+`CAL_WEBHOOK_SECRET` env var you give the provisioning CLI — it's the
+shared secret cal.diy signs each delivery with and the receiver verifies
+against. Provisioning auto-registers a per-user webhook for every client
+pointing at this receiver:
 
     http://host.docker.internal:8000/webhook
 

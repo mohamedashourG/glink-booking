@@ -32,6 +32,9 @@ class ProvisionedClient:
     booking_link: str
     work_start: str = "09:00"
     work_end: str = "18:00"
+    # cal.diy webhook subscription that wires this client's bookings into
+    # the receiver. Set on first provision; reused (not duplicated) on re-runs.
+    webhook_id: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)

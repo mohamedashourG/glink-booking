@@ -33,6 +33,8 @@ anything stable) or extend this module and let me know it grew.
 from __future__ import annotations
 
 import datetime as dt
+import json
+import urllib.parse
 from dataclasses import dataclass
 from typing import Any
 
@@ -101,44 +103,64 @@ class CalWebSession:
 
     # --- tRPC ---
     def trpc_mutation(self, endpoint: str, procedure: str, input_value: Any) -> Any:
-        """POST /api/trpc/<endpoint>/<procedure> with superjson body.
-
-        Returns the deserialized `result.data.json` payload (we ignore
-        `result.data.meta` because nothing we read needs Date round-trip).
-        """
+        """POST /api/trpc/<endpoint>/<procedure> with superjson body."""
         url = f"{self.base}/api/trpc/{endpoint}/{procedure}"
         body = _superjson_encode(input_value)
         try:
             resp = self.client.post(url, json=body, timeout=30.0)
         except httpx.HTTPError as exc:
             raise CalWebError(f"network error calling {url}: {exc}", url=url) from exc
+        return _decode_trpc_response(resp, url, endpoint, procedure)
 
-        text = resp.text
-        if resp.status_code >= 400:
-            raise CalWebError(
-                f"tRPC {endpoint}.{procedure} failed: HTTP {resp.status_code} — {_extract_trpc_error(text)}",
-                url=url,
-                status=resp.status_code,
-                body=text,
-            )
+    def trpc_query(self, endpoint: str, procedure: str, input_value: Any) -> Any:
+        """GET /api/trpc/<endpoint>/<procedure>?input=<superjson> for query procedures.
+
+        cal.diy's tRPC mount distinguishes queries (GET) from mutations (POST);
+        calling a query via POST returns 404 ("No 'mutation'-procedure on path …").
+
+        For optional-input queries, pass `input_value=None` and we omit the
+        `?input` query string entirely — cal.diy rejects `{"json": null}` as
+        "Invalid input" but is happy with no input at all.
+        """
+        url = f"{self.base}/api/trpc/{endpoint}/{procedure}"
+        if input_value is None:
+            full = url
+        else:
+            encoded = urllib.parse.quote(json.dumps(_superjson_encode(input_value)))
+            full = f"{url}?input={encoded}"
         try:
-            payload = resp.json()
-        except ValueError as exc:
-            raise CalWebError(
-                f"tRPC {endpoint}.{procedure} returned non-JSON body",
-                url=url,
-                status=resp.status_code,
-                body=text,
-            ) from exc
+            resp = self.client.get(full, timeout=30.0)
+        except httpx.HTTPError as exc:
+            raise CalWebError(f"network error calling {url}: {exc}", url=url) from exc
+        return _decode_trpc_response(resp, url, endpoint, procedure)
 
-        if "error" in payload:
-            raise CalWebError(
-                f"tRPC {endpoint}.{procedure} returned error: {_extract_trpc_error(text)}",
-                url=url,
-                status=resp.status_code,
-                body=text,
-            )
-        return payload["result"]["data"]["json"]
+
+def _decode_trpc_response(resp: httpx.Response, url: str, endpoint: str, procedure: str) -> Any:
+    text = resp.text
+    if resp.status_code >= 400:
+        raise CalWebError(
+            f"tRPC {endpoint}.{procedure} failed: HTTP {resp.status_code} — {_extract_trpc_error(text)}",
+            url=url,
+            status=resp.status_code,
+            body=text,
+        )
+    try:
+        payload = resp.json()
+    except ValueError as exc:
+        raise CalWebError(
+            f"tRPC {endpoint}.{procedure} returned non-JSON body",
+            url=url,
+            status=resp.status_code,
+            body=text,
+        ) from exc
+    if "error" in payload:
+        raise CalWebError(
+            f"tRPC {endpoint}.{procedure} returned error: {_extract_trpc_error(text)}",
+            url=url,
+            status=resp.status_code,
+            body=text,
+        )
+    return payload["result"]["data"]["json"]
 
 
 def _extract_trpc_error(body: str) -> str:
@@ -395,9 +417,9 @@ def update_event_type(
 
 # ----- webhook registration --------------------------------------------------
 # A cal.diy webhook can be scoped per-event-type (eventTypeId set), per-team
-# (teamId set), or per-user (neither). We pick per-event-type to keep test
-# blast radius small. Requires the same NextAuth session as the rest of the
-# tRPC calls.
+# (teamId set), or per-user (neither). We default to PER-USER so a single
+# subscription covers every event type the client owns now or later.
+# Requires the same NextAuth session as the rest of the tRPC calls.
 
 # All four cal.diy trigger events that map to a booking lifecycle stage.
 BOOKING_TRIGGER_EVENTS = [
@@ -408,6 +430,36 @@ BOOKING_TRIGGER_EVENTS = [
 ]
 
 
+def list_user_webhooks(session: CalWebSession) -> list[dict]:
+    """Return per-USER webhooks owned by the session's user.
+
+    Per-event-type webhooks (which carry `userId=NULL` + an `eventTypeId`)
+    are NOT returned here — `webhook.list` filters by `ctx.user.id` and
+    misses them. Use `list_event_type_webhooks` for those.
+    """
+    out = session.trpc_query("webhook", "list", None)
+    if isinstance(out, list):
+        return out
+    if isinstance(out, dict) and "webhooks" in out:
+        return out["webhooks"]
+    return []
+
+
+def list_event_type_webhooks(session: CalWebSession, event_type_id: int) -> list[dict]:
+    """Return webhooks scoped to a specific event type.
+
+    Needed because cal.diy stores per-event-type webhooks with `userId=NULL`,
+    so they don't show up in `list_user_webhooks`. Without this we'd
+    duplicate-create when an event-type-scoped webhook already exists.
+    """
+    out = session.trpc_query("webhook", "list", {"eventTypeId": event_type_id})
+    if isinstance(out, list):
+        return out
+    if isinstance(out, dict) and "webhooks" in out:
+        return out["webhooks"]
+    return []
+
+
 def create_webhook(
     session: CalWebSession,
     *,
@@ -416,7 +468,11 @@ def create_webhook(
     event_type_id: int | None = None,
     triggers: list[str] | None = None,
 ) -> str:
-    """Register a webhook; returns the webhook id."""
+    """Create a webhook unconditionally; returns the new webhook id.
+
+    Pass `event_type_id` to scope to a single event type; omit for the
+    default per-user scope.
+    """
     out = session.trpc_mutation(
         "webhook",
         "create",
@@ -430,3 +486,35 @@ def create_webhook(
         },
     )
     return str(out["id"])
+
+
+def ensure_webhook(
+    session: CalWebSession,
+    *,
+    subscriber_url: str,
+    secret: str,
+    event_type_id: int | None = None,
+    triggers: list[str] | None = None,
+) -> tuple[str, bool]:
+    """Idempotently register a per-user webhook for the receiver URL.
+
+    Returns `(webhook_id, created)`. `created` is False if a webhook with
+    the same `subscriberUrl` already existed.
+
+    We match on URL only, across BOTH scopes:
+      - per-user webhooks via list_user_webhooks
+      - per-event-type webhooks via list_event_type_webhooks (when
+        `event_type_id` is supplied)
+
+    This means a leftover hand-registered per-event-type webhook is
+    reused, not duplicated. If you want to upgrade scope from
+    per-event-type to per-user, delete the old one first — this function
+    deliberately does not "fix" the scope of existing entries.
+    """
+    candidates: list[dict] = list(list_user_webhooks(session))
+    if event_type_id is not None:
+        candidates.extend(list_event_type_webhooks(session, event_type_id))
+    for wh in candidates:
+        if wh.get("subscriberUrl") == subscriber_url:
+            return str(wh["id"]), False
+    return create_webhook(session, subscriber_url=subscriber_url, secret=secret, triggers=triggers), True

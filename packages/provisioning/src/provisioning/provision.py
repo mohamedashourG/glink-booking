@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import secrets
 import string
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from cal_client import Client, ProvisionedClient, Settings
 from cal_client.cal_web import (
@@ -21,6 +21,7 @@ from cal_client.cal_web import (
     SignupConflict,
     create_event_type,
     create_schedule,
+    ensure_webhook,
     login,
     signup,
     standard_booking_fields,
@@ -30,6 +31,7 @@ from cal_client.cal_web import (
 )
 
 from provisioning import defaults, store
+from provisioning.settings import WebhookSettings
 
 
 class ProvisionError(RuntimeError):
@@ -50,6 +52,7 @@ class ProvisionError(RuntimeError):
 class ProvisionResult:
     record: ProvisionedClient
     created: bool  # True if the user was newly signed up; False if already existed
+    webhook_created: bool = False  # True if a new webhook was registered this run
 
 
 def _generate_password() -> str:
@@ -64,7 +67,11 @@ def _booking_link(base: str, slug: str, event_slug: str) -> str:
     return f"{base}/{slug}/{event_slug}"
 
 
-def provision_client(client: Client, settings: Settings) -> ProvisionResult:
+def provision_client(
+    client: Client,
+    settings: Settings,
+    webhook_settings: WebhookSettings,
+) -> ProvisionResult:
     base = settings.cal_web_base
 
     # 1. signup ---------------------------------------------------------------
@@ -151,19 +158,44 @@ def provision_client(client: Client, settings: Settings) -> ProvisionResult:
                 email=client.email, step="event_type", message=str(exc), cause=exc
             ) from exc
 
-    record = ProvisionedClient(
-        email=client.email,
-        slug=client.slug,
-        full_name=client.full_name,
-        timezone=client.timezone,
-        password=password,
-        cal_user_id=cal_user_id,
-        schedule_id=schedule_id,
-        event_type_id=event_type_id,
-        event_type_slug=event_type_slug,
-        booking_link=_booking_link(base, client.slug, event_type_slug),
-        work_start=client.work_start,
-        work_end=client.work_end,
-    )
-    store.save(record)
-    return ProvisionResult(record=record, created=created)
+        # Persist what we know BEFORE the webhook step so a webhook
+        # failure leaves a recoverable record (re-runs can retry the
+        # webhook step without re-signing-up the user).
+        partial_record = ProvisionedClient(
+            email=client.email,
+            slug=client.slug,
+            full_name=client.full_name,
+            timezone=client.timezone,
+            password=password,
+            cal_user_id=cal_user_id,
+            schedule_id=schedule_id,
+            event_type_id=event_type_id,
+            event_type_slug=event_type_slug,
+            booking_link=_booking_link(base, client.slug, event_type_slug),
+            work_start=client.work_start,
+            work_end=client.work_end,
+            webhook_id=existing.webhook_id if existing else None,
+        )
+        store.save(partial_record)
+
+        try:
+            # 5. webhook ---------------------------------------------------
+            # Per-user scope is the default for new webhooks (one subscription
+            # covers every event type the client owns now or later). Match is
+            # by subscriberUrl across BOTH per-user and per-event-type scopes,
+            # so a leftover per-event-type webhook from earlier testing is
+            # reused rather than duplicated.
+            webhook_id, webhook_created = ensure_webhook(
+                session,
+                subscriber_url=webhook_settings.receiver_url,
+                secret=webhook_settings.shared_secret,
+                event_type_id=event_type_id,
+            )
+        except CalWebError as exc:
+            raise ProvisionError(
+                email=client.email, step="webhook", message=str(exc), cause=exc
+            ) from exc
+
+    final_record = replace(partial_record, webhook_id=webhook_id)
+    store.save(final_record)
+    return ProvisionResult(record=final_record, created=created, webhook_created=webhook_created)

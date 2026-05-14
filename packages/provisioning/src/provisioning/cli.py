@@ -9,6 +9,7 @@ from pathlib import Path
 from cal_client import Client, load_settings
 
 from provisioning.provision import ProvisionError, ProvisionResult, provision_client
+from provisioning.settings import load_webhook_settings
 
 
 def _add_client_args(p: argparse.ArgumentParser) -> None:
@@ -23,7 +24,8 @@ def _add_client_args(p: argparse.ArgumentParser) -> None:
 def _print_result(res: ProvisionResult) -> None:
     rec = res.record
     state = "created" if res.created else "updated"
-    print(f"  ✓ {state} {rec.email}")
+    wh = "new webhook" if res.webhook_created else "webhook reused"
+    print(f"  ✓ {state} {rec.email}  [{wh} {rec.webhook_id}]")
     print(f"      booking link : {rec.booking_link}")
     print(f"      first-login pw: {rec.password}")
 
@@ -68,9 +70,9 @@ def _clients_from_csv(path: Path) -> list[Client]:
         return out
 
 
-def _run_one(client: Client, *, settings) -> ProvisionResult | None:
+def _run_one(client: Client, *, settings, webhook_settings) -> ProvisionResult | None:
     try:
-        return provision_client(client, settings)
+        return provision_client(client, settings, webhook_settings)
     except ProvisionError as exc:
         # Loud, single-line failure that names the client + the step.
         print(f"  ✗ FAILED at step '{exc.step}' for {exc.email}: {exc}", file=sys.stderr)
@@ -89,10 +91,12 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     settings = load_settings()
+    webhook_settings = load_webhook_settings()
     print(f"cal.diy web base: {settings.cal_web_base}")
+    print(f"webhook receiver: {webhook_settings.receiver_url}")
 
     if args.cmd == "single":
-        result = _run_one(_client_from_args(args), settings=settings)
+        result = _run_one(_client_from_args(args), settings=settings, webhook_settings=webhook_settings)
         if result is None:
             return 1
         _print_result(result)
@@ -105,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
     failures = 0
     for c in clients:
         print(f"→ {c.email}")
-        r = _run_one(c, settings=settings)
+        r = _run_one(c, settings=settings, webhook_settings=webhook_settings)
         if r is None:
             failures += 1
         else:
