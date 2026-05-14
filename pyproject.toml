@@ -1,0 +1,16 @@
+[project]
+name = "glink-booking"
+version = "0.1.0"
+description = "Booking system built around a self-hosted cal.diy instance."
+requires-python = ">=3.11"
+dependencies = [
+    "cal-client",
+    "provisioning",
+]
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+cal-client = { workspace = true }
+provisioning = { workspace = true }

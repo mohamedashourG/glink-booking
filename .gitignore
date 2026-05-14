@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.python-version
+
+# uv
+.uv/
+
+# Local provisioning records — contain real client passwords + emails
+.data/
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
+
+# Env
+.env
+.env.local
