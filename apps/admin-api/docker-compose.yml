@@ -1,0 +1,29 @@
+# admin-api — runs from monorepo root context so packages/* are reachable.
+#
+# .data is bind-mounted from the host so the API reads/writes the same
+# per-client records the CLI does. In production this needs to be a
+# persistent volume — note in apps/ops/RUNBOOK.md.
+#
+# CAL_WEB_BASE points at the host's cal.diy (host.docker.internal:3000).
+
+services:
+  admin-api:
+    build:
+      context: ../..
+      dockerfile: apps/admin-api/Dockerfile
+    restart: unless-stopped
+    environment:
+      # Container reaches cal.diy via host.docker.internal; the public URL
+      # in booking links uses plain localhost so users can click them.
+      CAL_WEB_BASE: ${CAL_WEB_BASE:-http://host.docker.internal:3000}
+      CAL_PUBLIC_BASE: ${CAL_PUBLIC_BASE:-http://localhost:3000}
+      ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET:?set ADMIN_SESSION_SECRET in apps/admin-api/.env (>=32 chars)}
+      ADMIN_SESSION_TTL_SECONDS: ${ADMIN_SESSION_TTL_SECONDS:-86400}
+      ADMIN_UI_ORIGIN: ${ADMIN_UI_ORIGIN:-http://localhost:3001}
+      ADMIN_COOKIE_DOMAIN: ${ADMIN_COOKIE_DOMAIN:-}
+      ADMIN_COOKIE_SECURE: ${ADMIN_COOKIE_SECURE:-false}
+      STORE_DIR: /app/.data
+    volumes:
+      - ../../.data:/app/.data
+    ports:
+      - "8002:8002"

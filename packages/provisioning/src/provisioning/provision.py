@@ -70,6 +70,7 @@ def _booking_link(base: str, slug: str, event_slug: str) -> str:
 
 def provision_client(client: Client, settings: Settings) -> ProvisionResult:
     base = settings.cal_web_base
+    public_base = settings.cal_public_base
 
     # 1. signup ---------------------------------------------------------------
     existing = store.load(client.email)
@@ -164,7 +165,7 @@ def provision_client(client: Client, settings: Settings) -> ProvisionResult:
         schedule_id=schedule_id,
         event_type_id=event_type_id,
         event_type_slug=event_type_slug,
-        booking_link=_booking_link(base, client.slug, event_type_slug),
+        booking_link=_booking_link(public_base, client.slug, event_type_slug),
         work_start=client.work_start,
         work_end=client.work_end,
         # Pre-existing per-user webhooks (from before the platform-webhook
