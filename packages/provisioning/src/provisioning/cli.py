@@ -8,6 +8,7 @@ from pathlib import Path
 
 from cal_client import Client, load_settings
 
+from provisioning import store
 from provisioning.provision import ProvisionError, ProvisionResult, provision_client
 from provisioning.settings import load_webhook_settings
 
@@ -19,6 +20,11 @@ def _add_client_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--tz", default="America/New_York", help="IANA timezone, default America/New_York")
     p.add_argument("--work-start", default="09:00", help="HH:MM in client tz, default 09:00")
     p.add_argument("--work-end", default="18:00", help="HH:MM in client tz, default 18:00")
+    p.add_argument(
+        "--calendly-url",
+        default=None,
+        help="Optional fallback Calendly URL the outage page embeds when cal.diy is down",
+    )
 
 
 def _print_result(res: ProvisionResult) -> None:
@@ -38,13 +44,15 @@ def _client_from_args(args: argparse.Namespace) -> Client:
         timezone=args.tz,
         work_start=args.work_start,
         work_end=args.work_end,
+        calendly_url=args.calendly_url,
     )
 
 
 def _clients_from_csv(path: Path) -> list[Client]:
-    """Read a CSV with columns: full_name,email,slug[,timezone,work_start,work_end].
+    """Read a CSV with columns: full_name,email,slug[,timezone,work_start,work_end,calendly_url].
 
     Extra columns are ignored. A header row is required.
+    `calendly_url` is optional — leave the cell empty for clients without one.
     """
     with path.open(newline="") as fh:
         reader = csv.DictReader(fh)
@@ -63,6 +71,7 @@ def _clients_from_csv(path: Path) -> list[Client]:
                         timezone=(row.get("timezone") or "").strip() or "America/New_York",
                         work_start=(row.get("work_start") or "").strip() or "09:00",
                         work_end=(row.get("work_end") or "").strip() or "18:00",
+                        calendly_url=(row.get("calendly_url") or "").strip() or None,
                     )
                 )
             except KeyError as exc:
@@ -100,6 +109,8 @@ def main(argv: list[str] | None = None) -> int:
         if result is None:
             return 1
         _print_result(result)
+        manifest = store.write_manifest()
+        print(f"manifest: {manifest}")
         return 0
 
     # batch
@@ -114,6 +125,8 @@ def main(argv: list[str] | None = None) -> int:
             failures += 1
         else:
             successes.append(r)
+    manifest = store.write_manifest()
+    print(f"\nmanifest: {manifest}")
 
     print()
     print(f"Done: {len(successes)} succeeded, {failures} failed.\n")

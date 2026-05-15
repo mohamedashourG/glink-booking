@@ -45,3 +45,49 @@ def save(record: ProvisionedClient, store_dir: Path | None = None) -> Path:
     path.write_text(json.dumps(record.to_dict(), indent=2, sort_keys=True))
     path.chmod(0o600)
     return path
+
+
+# --- public manifest -------------------------------------------------------
+# clients.json sits alongside the per-client records but is the safe-to-read
+# subset (no passwords, no internal IDs) — slug / full_name / email /
+# calendly_url. It's the static source of truth the outage-fallback Next.js
+# app (apps/fallback/) reads at BUILD time. Regenerated on every provisioning
+# run by walking the store dir.
+
+MANIFEST_FILENAME = "clients.json"
+
+
+def manifest_path(store_dir: Path | None = None) -> Path:
+    return (store_dir or default_store_dir()) / MANIFEST_FILENAME
+
+
+def write_manifest(store_dir: Path | None = None) -> Path:
+    """(Re)build clients.json from every per-client record in the store dir.
+
+    Idempotent — re-running provisioning rebuilds it from current state, so
+    additions/updates flow through without bookkeeping. Safe to commit *only*
+    if you really want clients listed publicly; .gitignore covers .data/ by
+    default to keep both this file and the per-client records private.
+    """
+    base = store_dir or default_store_dir()
+    base.mkdir(parents=True, exist_ok=True)
+    entries: list[dict] = []
+    for child in sorted(base.glob("*.json")):
+        if child.name == MANIFEST_FILENAME:
+            continue
+        try:
+            data = json.loads(child.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        entries.append(
+            {
+                "slug": data.get("slug"),
+                "full_name": data.get("full_name"),
+                "email": data.get("email"),
+                "calendly_url": data.get("calendly_url"),
+            }
+        )
+    out = base / MANIFEST_FILENAME
+    out.write_text(json.dumps(entries, indent=2, sort_keys=True) + "\n")
+    out.chmod(0o644)
+    return out

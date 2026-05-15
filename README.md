@@ -74,12 +74,21 @@ export CAL_WEBHOOK_SECRET=<same value as apps/receiver/.env CAL_WEBHOOK_SECRET>
 `CAL_WEBHOOK_SECRET` here MUST be the same value the receiver was
 started with. They sign and verify the same envelopes.
 
-Single client:
+Single client (no fallback URL):
 
 ```bash
 uv run glink-provision single \
     --name "Acme Inc" --email founder@acme.test --slug acme \
     --tz America/New_York
+```
+
+Single client with a fallback Calendly URL (used by the outage-fallback page when cal.diy is down):
+
+```bash
+uv run glink-provision single \
+    --name "Acme Inc" --email founder@acme.test --slug acme \
+    --tz America/New_York \
+    --calendly-url https://calendly.com/acme-inc/30min
 ```
 
 CSV batch (header row required; columns: `full_name, email, slug` — and
@@ -97,3 +106,18 @@ as secrets**.
 Re-running the same client (same email) is safe: it loads the stored
 record, logs back in, and re-applies the schedule + event-type config
 without duplicating anything.
+
+### clients.json manifest
+
+After every provisioning run the CLI also (re)writes a flat manifest at
+`./.data/clients.json` containing only the publicly-shareable subset:
+
+```json
+[ { "slug": "...", "full_name": "...", "email": "...", "calendly_url": "..." | null } ]
+```
+
+This is the static source of truth the **outage-fallback** Next.js app
+([apps/fallback/](apps/fallback/)) reads at build time to generate one
+static page per client. The manifest carries no secrets, but lives under
+`.data/` (gitignored) by convention — regenerate it with any provisioning
+run.

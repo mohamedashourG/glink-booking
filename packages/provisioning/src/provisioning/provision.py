@@ -175,6 +175,7 @@ def provision_client(
             work_start=client.work_start,
             work_end=client.work_end,
             webhook_id=existing.webhook_id if existing else None,
+            calendly_url=client.calendly_url,
         )
         store.save(partial_record)
 
