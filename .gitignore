@@ -19,3 +19,9 @@ __pycache__/
 # Env
 .env
 .env.local
+
+# Node / Next.js (apps/fallback)
+node_modules/
+.next/
+out/
+next-env.d.ts
