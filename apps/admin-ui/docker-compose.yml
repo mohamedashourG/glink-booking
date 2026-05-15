@@ -1,0 +1,23 @@
+# admin-ui — internal Next.js app for the agency director.
+#
+# Stand-alone like the other apps in this monorepo. The container reaches
+# admin-api via host.docker.internal:8002 (admin-api binds :8002 on the
+# host). Same pattern receiver uses to reach cal.diy.
+#
+# Run with: docker compose -f apps/admin-ui/docker-compose.yml up -d
+# (admin-api must be up first.)
+
+services:
+  admin-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      ADMIN_API_BASE: ${ADMIN_API_BASE:-http://host.docker.internal:8002}
+      ADMIN_UI_COOKIE_NAME: ${ADMIN_UI_COOKIE_NAME:-glink_admin_ui_session}
+      NODE_ENV: production
+    ports:
+      - "3001:3001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
