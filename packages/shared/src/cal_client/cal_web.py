@@ -496,14 +496,14 @@ def create_webhook(
     return str(out["id"])
 
 
-def ensure_platform_webhook(
+def create_platform_webhook(
     admin_session: CalWebSession,
     *,
     subscriber_url: str,
     secret: str,
     triggers: list[str] | None = None,
-) -> tuple[str, bool]:
-    """Idempotently create the ONE global cal.diy platform webhook.
+) -> str:
+    """Unconditionally create the global cal.diy platform webhook.
 
     cal.diy stores `platform=true` webhooks at the instance level — they
     fire for EVERY booking trigger regardless of user / team / event type
@@ -511,12 +511,13 @@ def ensure_platform_webhook(
     The session must be the system admin's; the create handler hard-checks
     `user.role === "ADMIN"` before accepting `platform=true`.
 
-    Matches existing platform webhooks by subscriberUrl, never duplicates.
-    Returns `(webhook_id, created)`.
+    Returns the new webhook id. **Not idempotent on its own** — cal.diy
+    will happily store a second platform webhook with the same URL because
+    `webhook.list` doesn't surface platform-scoped webhooks even to
+    admins (verified live: returns `[]`). The bootstrap CLI tracks state
+    in a local file (provisioning.admin) to make the user-facing
+    operation re-runnable.
     """
-    for wh in list_user_webhooks(admin_session):
-        if wh.get("subscriberUrl") == subscriber_url and wh.get("platform"):
-            return str(wh["id"]), False
     out = admin_session.trpc_mutation(
         "webhook",
         "create",
@@ -529,7 +530,20 @@ def ensure_platform_webhook(
             "platform": True,
         },
     )
-    return str(out["id"]), True
+    return str(out["id"])
+
+
+def delete_webhook(session: CalWebSession, webhook_id: str) -> bool:
+    """Best-effort delete by id. Returns True if it existed and was deleted,
+    False if it was already gone. Other errors propagate.
+    """
+    try:
+        session.trpc_mutation("webhook", "delete", {"id": webhook_id})
+        return True
+    except CalWebError as exc:
+        if exc.status == 404 or "not found" in str(exc).lower():
+            return False
+        raise
 
 
 def ensure_webhook(

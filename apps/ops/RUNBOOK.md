@@ -37,6 +37,18 @@ webhook covers them.
 
 Idempotent. Safe to re-run. Won't create duplicates.
 
+> **How idempotency works** — cal.diy's `webhook.list` route returns `[]`
+> for admins even when platform webhooks exist (verified live), so the
+> usual "list, match by URL, skip" pattern doesn't work here. The
+> bootstrap CLI instead writes a state record to
+> `.data/platform_webhook.json` after creating the webhook. Re-runs
+> short-circuit on that file.
+>
+> If you ever delete the platform webhook in cal.diy out of band (e.g.
+> via SQL during a reset) — also delete `.data/platform_webhook.json`
+> before re-running the bootstrap, otherwise the CLI will think it
+> already exists and skip.
+
 ## Decisions worth knowing about
 
 ### "Send email to additional addresses" on event types — N/A in this build
