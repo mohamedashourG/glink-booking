@@ -21,6 +21,7 @@ from psycopg_pool import ConnectionPool
 from receiver.extract import ExtractedBooking
 from receiver.integrations import email as email_integration
 from receiver.integrations import hubspot as hubspot_integration
+from receiver.integrations import sheets as sheets_integration
 from receiver.integrations import slack as slack_integration
 
 log = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ _INTEGRATIONS = (
     ("slack", slack_integration),
     ("hubspot", hubspot_integration),
     ("email", email_integration),
+    ("sheets", sheets_integration),
 )
 
 

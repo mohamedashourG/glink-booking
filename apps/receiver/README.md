@@ -1,8 +1,7 @@
 # receiver — cal.diy webhook receiver
 
 Durability layer that captures every cal.diy booking event into its own
-Postgres before any external fan-out (Slack / HubSpot / email — added in
-a follow-up).
+Postgres, then fans out to Slack / HubSpot / Resend / Google Sheets.
 
 The receiver:
 
@@ -20,20 +19,20 @@ Non-goals (deliberate):
 - the receiver never calls cal.diy
 - the receiver never writes into cal.diy's database
 
-## Fan-out: Slack / HubSpot / Email
+## Fan-out: Slack / HubSpot / Resend / Google Sheets
 
-After the DB row is committed and the 2xx returned, three best-effort
+After the DB row is committed and the 2xx returned, four best-effort
 integrations fire in a background task ([`fanout.py`](src/receiver/fanout.py)).
 They run **concurrently** so a slow one doesn't block the others.
 
 - They fire **only on newly-stored rows** — a cal.diy retry (deduped by
-  the UNIQUE constraint) does NOT re-post to Slack/HubSpot/email.
+  the UNIQUE constraint) does NOT re-post to Slack/HubSpot/Resend/Sheets.
 - Each integration is independent. A failure or hang in one is logged
   and contained; it never affects the others, the DB row, or the
   response cal.diy already received.
 - Each reads its own env vars. Unset = silently skipped at startup
-  ("not configured"). The receiver runs cleanly with zero, one, two,
-  or all three configured.
+  ("not configured"). The receiver runs cleanly with zero through all
+  four configured.
 - Known limitation, accepted for now: if the receiver process crashes
   between the 2xx and the background task running, that booking's
   fan-out is lost. The DB row persisted, so a future replay tool can
@@ -77,10 +76,17 @@ curl -fsS http://localhost:8000/health     # → {"status":"ok"}
 The `CAL_WEBHOOK_SECRET` you generate here must match the
 `CAL_WEBHOOK_SECRET` env var you give the provisioning CLI — it's the
 shared secret cal.diy signs each delivery with and the receiver verifies
-against. Provisioning auto-registers a per-user webhook for every client
-pointing at this receiver:
+against. After the receiver is up, run **once** per cal.diy instance:
 
-    http://host.docker.internal:8000/webhook
+```bash
+uv run --project ../.. glink-provision bootstrap-webhook
+```
+
+That registers cal.diy's single global "platform" webhook against this
+receiver URL — `http://host.docker.internal:8000/webhook` — and from
+then on every booking on every client lands here automatically. See the
+[operator runbook](../ops/RUNBOOK.md) for the full bootstrap env list
+and the rationale for the platform-vs-per-user choice.
 
 ## Verifying durability
 
