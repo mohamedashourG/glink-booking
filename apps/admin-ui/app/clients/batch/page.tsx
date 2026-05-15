@@ -1,15 +1,14 @@
 import Link from "next/link";
 import { ArrowLeft, FileSpreadsheet } from "lucide-react";
 import { requireToken } from "@/lib/server-session";
-import { Nav } from "@/components/Nav";
+import { AppShell } from "@/components/AppShell";
 import { BatchForm } from "./BatchForm";
 
 export default async function BatchPage() {
   const { email } = await requireToken();
   return (
-    <>
-      <Nav adminEmail={email} />
-      <main className="mx-auto max-w-4xl px-6 py-8 animate-fade-in">
+    <AppShell adminEmail={email}>
+      <main className="mx-auto max-w-4xl px-8 py-8 animate-fade-in">
         <Link
           href="/"
           className="inline-flex items-center gap-1 text-sm text-ink-500 hover:text-ink-900 transition-colors"
@@ -27,7 +26,7 @@ export default async function BatchPage() {
 
         <div className="mt-6 card card-pad bg-ink-50/40 border-dashed">
           <div className="flex items-start gap-3">
-            <div className="rounded-lg bg-white text-brand-600 p-2 border border-ink-200">
+            <div className="rounded-lg bg-brand-100 text-brand-700 p-2">
               <FileSpreadsheet className="h-4 w-4" />
             </div>
             <div className="text-sm text-ink-700">
@@ -53,6 +52,6 @@ export default async function BatchPage() {
           <BatchForm />
         </div>
       </main>
-    </>
+    </AppShell>
   );
 }

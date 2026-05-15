@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { adminApi, type ApiError } from "@/lib/api";
 import { requireToken } from "@/lib/server-session";
-import { Nav } from "@/components/Nav";
+import { AppShell } from "@/components/AppShell";
 import { Avatar } from "@/components/Avatar";
 import { Reveal } from "@/components/Reveal";
 import { CopyButton } from "@/components/CopyButton";
@@ -33,9 +33,8 @@ export default async function ClientDetail({ params }: { params: Promise<{ slug:
   const { record, webhook_coverage } = detail;
 
   return (
-    <>
-      <Nav adminEmail={email} />
-      <main className="mx-auto max-w-5xl px-6 py-8 animate-fade-in">
+    <AppShell adminEmail={email}>
+      <main className="mx-auto max-w-5xl px-8 py-8 animate-fade-in">
         <Link
           href="/"
           className="inline-flex items-center gap-1 text-sm text-ink-500 hover:text-ink-900 transition-colors"
@@ -155,7 +154,7 @@ export default async function ClientDetail({ params }: { params: Promise<{ slug:
           </div>
         </div>
       </main>
-    </>
+    </AppShell>
   );
 }
 
@@ -174,7 +173,7 @@ function SectionCard({
     <section className="card card-pad">
       <header className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-brand-50 text-brand-600 p-2">
+          <div className="rounded-lg bg-brand-100 text-brand-700 p-2">
             <Icon className="h-4 w-4" />
           </div>
           <div>

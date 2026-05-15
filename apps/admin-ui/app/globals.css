@@ -4,22 +4,21 @@
 
 :root {
   color-scheme: light;
-  --bg: #f8fafc;
 }
 
 html, body {
-  @apply text-ink-900 antialiased;
-  background:
-    radial-gradient(1200px 600px at 100% -10%, rgba(99,102,241,0.08), transparent 60%),
-    radial-gradient(900px 500px at -10% 110%, rgba(79,70,229,0.06), transparent 55%),
-    var(--bg);
-  background-attachment: fixed;
+  @apply bg-white text-ink-900 antialiased;
 }
 
-/* nicer focus rings everywhere */
+::selection {
+  background: #0f1f4e;
+  color: #ffffff;
+}
+
+/* Always show focus ring on keyboard nav. */
 *:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 4px rgba(99,102,241,0.18);
+  box-shadow: 0 0 0 4px rgba(15,31,78,0.18);
   border-radius: 0.5rem;
 }
 
@@ -50,7 +49,7 @@ html, body {
 
   /* Cards / surfaces ---------------------------------------------------- */
   .card {
-    @apply rounded-2xl bg-white border border-ink-200/70 shadow-soft;
+    @apply rounded-xl bg-white border border-ink-200 shadow-soft;
   }
   .card-pad { @apply p-6; }
 
@@ -58,7 +57,7 @@ html, body {
   .input {
     @apply block w-full rounded-lg border border-ink-200 bg-white text-ink-900
            px-3.5 py-2.5 text-sm placeholder:text-ink-400
-           transition-colors focus:border-brand-500 focus:bg-white;
+           transition-colors focus:border-brand-600 focus:bg-white;
   }
   .input-with-icon { @apply pl-10; }
   .label {
@@ -76,7 +75,7 @@ html, body {
   .badge-warn    { @apply badge bg-amber-50  text-amber-800   ring-1 ring-inset ring-amber-600/20;   }
   .badge-danger  { @apply badge bg-rose-50   text-rose-700    ring-1 ring-inset ring-rose-600/20;    }
   .badge-neutral { @apply badge bg-ink-100   text-ink-700     ring-1 ring-inset ring-ink-300/40;     }
-  .badge-brand   { @apply badge bg-brand-50  text-brand-700   ring-1 ring-inset ring-brand-600/20;   }
+  .badge-brand   { @apply badge bg-brand-100 text-brand-700   ring-1 ring-inset ring-brand-600/20;   }
 
   /* Code chip */
   .chip-mono {
@@ -84,23 +83,15 @@ html, body {
            font-mono text-[0.78rem] text-ink-800;
   }
 
-  /* Section heading on cards */
+  /* Section eyebrow */
   .eyebrow {
     @apply text-[0.7rem] font-semibold uppercase tracking-[0.08em] text-ink-500;
   }
 }
 
-/* Utility helpers */
-.bg-grid {
-  background-image:
-    linear-gradient(rgba(99,102,241,0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(99,102,241,0.06) 1px, transparent 1px);
-  background-size: 32px 32px;
-}
-
 /* Skeleton shimmer */
 .shimmer {
-  background: linear-gradient(90deg, #f1f5f9 0, #e2e8f0 50%, #f1f5f9 100%);
+  background: linear-gradient(90deg, #f5f5f5 0, #e5e5e5 50%, #f5f5f5 100%);
   background-size: 200% 100%;
   animation: shimmer 1.6s linear infinite;
 }

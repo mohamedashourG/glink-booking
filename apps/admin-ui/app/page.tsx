@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Users, ShieldCheck, AlertCircle, UserPlus, Upload } from "lucide-react";
 import { adminApi } from "@/lib/api";
 import { requireToken } from "@/lib/server-session";
-import { Nav } from "@/components/Nav";
+import { AppShell } from "@/components/AppShell";
 import { Stat } from "@/components/Stat";
 import { ClientsTable } from "@/components/ClientsTable";
 
@@ -16,9 +16,8 @@ export default async function Dashboard() {
   const publicBase = process.env.CAL_PUBLIC_BASE || "http://localhost:3000";
 
   return (
-    <>
-      <Nav adminEmail={email} />
-      <main className="mx-auto max-w-7xl px-6 py-8 animate-fade-in">
+    <AppShell adminEmail={email}>
+      <main className="mx-auto max-w-7xl px-8 py-8 animate-fade-in">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-6">
           <div>
             <h1 className="text-[1.65rem] font-semibold text-ink-900 tracking-tight">Clients</h1>
@@ -64,6 +63,6 @@ export default async function Dashboard() {
 
         <ClientsTable clients={clients} publicBase={publicBase} />
       </main>
-    </>
+    </AppShell>
   );
 }

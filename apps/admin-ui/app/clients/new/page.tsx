@@ -1,15 +1,14 @@
 import Link from "next/link";
 import { ArrowLeft, Sparkles, Clock, ShieldCheck, CalendarHeart } from "lucide-react";
 import { requireToken } from "@/lib/server-session";
-import { Nav } from "@/components/Nav";
+import { AppShell } from "@/components/AppShell";
 import { NewClientForm } from "./NewClientForm";
 
 export default async function NewClientPage() {
   const { email } = await requireToken();
   return (
-    <>
-      <Nav adminEmail={email} />
-      <main className="mx-auto max-w-5xl px-6 py-8 animate-fade-in">
+    <AppShell adminEmail={email}>
+      <main className="mx-auto max-w-5xl px-8 py-8 animate-fade-in">
         <Link
           href="/"
           className="inline-flex items-center gap-1 text-sm text-ink-500 hover:text-ink-900 transition-colors"
@@ -57,14 +56,14 @@ export default async function NewClientPage() {
           </aside>
         </div>
       </main>
-    </>
+    </AppShell>
   );
 }
 
 function Pip({ Icon, title, body }: { Icon: typeof Sparkles; title: string; body: string }) {
   return (
     <div className="card p-4 flex gap-3 items-start">
-      <div className="rounded-lg bg-brand-50 text-brand-600 p-2 shrink-0">
+      <div className="rounded-lg bg-brand-100 text-brand-700 p-2 shrink-0">
         <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0">

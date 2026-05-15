@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { LogOut, ShieldCheck } from "lucide-react";
 import { Avatar } from "./Avatar";
+import { Tooltip } from "./Tooltip";
 import { logoutAction } from "@/app/actions/auth";
 
-export function UserMenu({ email }: { email: string }) {
+export function SidebarUserMenu({ email }: { email: string }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -25,20 +26,34 @@ export function UserMenu({ email }: { email: string }) {
 
   return (
     <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        className="flex items-center gap-2 rounded-full p-1 pr-3 hover:bg-ink-100 transition-colors"
-      >
-        <Avatar seed={email} size="sm" />
-        <span className="hidden sm:inline text-sm text-ink-700">{email}</span>
-      </button>
+      {open ? null : (
+        <Tooltip label={email}>
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            aria-haspopup="menu"
+            aria-expanded={false}
+            className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-ink-100 transition-colors"
+          >
+            <Avatar seed={email} size="sm" />
+          </button>
+        </Tooltip>
+      )}
+      {open && (
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          aria-haspopup="menu"
+          aria-expanded={true}
+          className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-ink-100 transition-colors"
+        >
+          <Avatar seed={email} size="sm" />
+        </button>
+      )}
       {open && (
         <div
           role="menu"
-          className="absolute right-0 mt-2 w-64 origin-top-right rounded-xl border border-ink-200 bg-white shadow-pop overflow-hidden animate-scale-in"
+          className="absolute bottom-0 left-full ml-2 w-64 origin-bottom-left rounded-xl border border-ink-200 bg-white shadow-pop overflow-hidden animate-scale-in z-50"
         >
           <div className="p-3 border-b border-ink-100 flex items-center gap-3">
             <Avatar seed={email} size="md" />
