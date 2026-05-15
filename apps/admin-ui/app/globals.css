@@ -2,8 +2,105 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: light; }
+:root {
+  color-scheme: light;
+  --bg: #f8fafc;
+}
 
 html, body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  @apply text-ink-900 antialiased;
+  background:
+    radial-gradient(1200px 600px at 100% -10%, rgba(99,102,241,0.08), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(79,70,229,0.06), transparent 55%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+/* nicer focus rings everywhere */
+*:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(99,102,241,0.18);
+  border-radius: 0.5rem;
+}
+
+/* Component primitives — used across pages so we keep markup terse. */
+
+@layer components {
+  /* Buttons ------------------------------------------------------------- */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg text-sm font-medium
+           transition-all duration-150 select-none whitespace-nowrap
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none;
+  }
+  .btn-primary {
+    @apply btn bg-brand-600 text-white px-3.5 py-2 shadow-pop
+           hover:bg-brand-700 active:bg-brand-800;
+  }
+  .btn-secondary {
+    @apply btn bg-white text-ink-700 px-3.5 py-2 border border-ink-200 shadow-soft
+           hover:bg-ink-50 hover:border-ink-300;
+  }
+  .btn-ghost {
+    @apply btn text-ink-600 px-2.5 py-1.5 hover:bg-ink-100 hover:text-ink-900;
+  }
+  .btn-icon {
+    @apply btn p-2 text-ink-500 hover:bg-ink-100 hover:text-ink-900;
+  }
+  .btn-sm { @apply px-3 py-1.5 text-xs; }
+
+  /* Cards / surfaces ---------------------------------------------------- */
+  .card {
+    @apply rounded-2xl bg-white border border-ink-200/70 shadow-soft;
+  }
+  .card-pad { @apply p-6; }
+
+  /* Form inputs --------------------------------------------------------- */
+  .input {
+    @apply block w-full rounded-lg border border-ink-200 bg-white text-ink-900
+           px-3.5 py-2.5 text-sm placeholder:text-ink-400
+           transition-colors focus:border-brand-500 focus:bg-white;
+  }
+  .input-with-icon { @apply pl-10; }
+  .label {
+    @apply block text-sm font-medium text-ink-700 mb-1.5;
+  }
+  .hint {
+    @apply mt-1.5 text-xs text-ink-500;
+  }
+
+  /* Badges -------------------------------------------------------------- */
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium;
+  }
+  .badge-success { @apply badge bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20; }
+  .badge-warn    { @apply badge bg-amber-50  text-amber-800   ring-1 ring-inset ring-amber-600/20;   }
+  .badge-danger  { @apply badge bg-rose-50   text-rose-700    ring-1 ring-inset ring-rose-600/20;    }
+  .badge-neutral { @apply badge bg-ink-100   text-ink-700     ring-1 ring-inset ring-ink-300/40;     }
+  .badge-brand   { @apply badge bg-brand-50  text-brand-700   ring-1 ring-inset ring-brand-600/20;   }
+
+  /* Code chip */
+  .chip-mono {
+    @apply inline-flex items-center rounded-md bg-ink-100 px-2 py-0.5
+           font-mono text-[0.78rem] text-ink-800;
+  }
+
+  /* Section heading on cards */
+  .eyebrow {
+    @apply text-[0.7rem] font-semibold uppercase tracking-[0.08em] text-ink-500;
+  }
+}
+
+/* Utility helpers */
+.bg-grid {
+  background-image:
+    linear-gradient(rgba(99,102,241,0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99,102,241,0.06) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* Skeleton shimmer */
+.shimmer {
+  background: linear-gradient(90deg, #f1f5f9 0, #e2e8f0 50%, #f1f5f9 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
 }

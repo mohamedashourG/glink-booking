@@ -1,95 +1,68 @@
 import Link from "next/link";
+import { Users, ShieldCheck, AlertCircle, UserPlus, Upload } from "lucide-react";
 import { adminApi } from "@/lib/api";
 import { requireToken } from "@/lib/server-session";
 import { Nav } from "@/components/Nav";
-import { CopyButton } from "@/components/CopyButton";
-
-const COVERAGE_BADGE: Record<string, string> = {
-  platform: "bg-emerald-100 text-emerald-800",
-  "per-user": "bg-amber-100 text-amber-800",
-  none: "bg-red-100 text-red-800",
-};
+import { Stat } from "@/components/Stat";
+import { ClientsTable } from "@/components/ClientsTable";
 
 export default async function Dashboard() {
   const { token, email } = await requireToken();
   const { clients } = await adminApi.listClients(token);
 
+  const platformCount = clients.filter((c) => c.webhook_coverage === "platform").length;
+  const perUserCount = clients.filter((c) => c.webhook_coverage === "per-user").length;
+  const noneCount = clients.filter((c) => c.webhook_coverage === "none").length;
+  const publicBase = process.env.CAL_PUBLIC_BASE || "http://localhost:3000";
+
   return (
     <>
       <Nav adminEmail={email} />
-      <main className="mx-auto max-w-6xl px-6 py-8">
-        <div className="flex items-center justify-between mb-6">
+      <main className="mx-auto max-w-7xl px-6 py-8 animate-fade-in">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900">Clients</h1>
-            <p className="text-sm text-slate-500 mt-1">{clients.length} provisioned.</p>
+            <h1 className="text-[1.65rem] font-semibold text-ink-900 tracking-tight">Clients</h1>
+            <p className="text-sm text-ink-500 mt-1">
+              Provisioned booking links and webhook coverage across your portfolio.
+            </p>
           </div>
           <div className="flex gap-2">
-            <Link
-              href="/clients/batch"
-              className="px-3 py-2 text-sm rounded border border-slate-300 bg-white hover:bg-slate-100"
-            >
-              Batch provision
+            <Link href="/clients/batch" className="btn-secondary">
+              <Upload className="h-4 w-4" />
+              Batch upload
             </Link>
-            <Link
-              href="/clients/new"
-              className="px-3 py-2 text-sm rounded bg-slate-900 text-white hover:bg-slate-800"
-            >
-              + Add client
+            <Link href="/clients/new" className="btn-primary">
+              <UserPlus className="h-4 w-4" />
+              Add client
             </Link>
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-600 uppercase text-xs tracking-wide">
-              <tr>
-                <th className="text-left px-4 py-3">Slug</th>
-                <th className="text-left px-4 py-3">Name</th>
-                <th className="text-left px-4 py-3">Email</th>
-                <th className="text-left px-4 py-3">Booking link</th>
-                <th className="text-left px-4 py-3">Webhook</th>
-                <th className="text-right px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {clients.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
-                    No clients yet. Use <Link href="/clients/new" className="underline">Add client</Link>.
-                  </td>
-                </tr>
-              )}
-              {clients.map((c) => {
-                const bookingLink = `${process.env.CAL_PUBLIC_BASE || "http://localhost:3000"}/${c.slug}/30min`;
-                return (
-                  <tr key={c.email} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-mono text-slate-900">{c.slug}</td>
-                    <td className="px-4 py-3 text-slate-700">{c.full_name}</td>
-                    <td className="px-4 py-3 text-slate-500">{c.email}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <a href={bookingLink} target="_blank" rel="noopener noreferrer" className="text-blue-700 underline">
-                          {c.slug}/30min
-                        </a>
-                        <CopyButton value={bookingLink} />
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${COVERAGE_BADGE[c.webhook_coverage] ?? "bg-slate-100 text-slate-700"}`}>
-                        {c.webhook_coverage}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <Link href={`/clients/${encodeURIComponent(c.slug)}`} className="text-slate-700 hover:underline">
-                        View →
-                      </Link>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <Stat label="Total clients" value={clients.length} Icon={Users} tone="brand" />
+          <Stat
+            label="Platform webhook"
+            value={platformCount}
+            Icon={ShieldCheck}
+            tone="success"
+            hint={platformCount === clients.length && clients.length > 0 ? "All clients covered" : "Bookings flow through receiver"}
+          />
+          <Stat
+            label="Needs attention"
+            value={perUserCount + noneCount}
+            Icon={AlertCircle}
+            tone={perUserCount + noneCount === 0 ? "success" : "warn"}
+            hint={
+              noneCount > 0
+                ? `${noneCount} with no webhook`
+                : perUserCount > 0
+                  ? `${perUserCount} on legacy per-user webhook`
+                  : "All good"
+            }
+          />
         </div>
+
+        <ClientsTable clients={clients} publicBase={publicBase} />
       </main>
     </>
   );
