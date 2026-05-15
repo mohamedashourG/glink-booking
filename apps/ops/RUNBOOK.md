@@ -11,6 +11,8 @@ Audience is engineering / ops, not clients.
 | receiver | `apps/receiver/` | 8000 | FastAPI; receives cal.diy webhooks, persists, fans out |
 | provisioning | `packages/provisioning` | (CLI) | Creates clients in cal.diy + writes the manifest |
 | fallback | `apps/fallback/` | (static) | Outage page; built ahead of time, served when cal.diy is down |
+| admin-api | `apps/admin-api/` | 8002 | FastAPI; thin HTTP wrapper around `provisioning` for the agency UI |
+| admin-ui | `apps/admin-ui/` | 3001 | Next.js; the agency director's no-terminal control panel |
 
 ## One-time bootstrap
 
@@ -188,6 +190,54 @@ docker compose -f apps/receiver/docker-compose.yml up -d
 uv run glink-provision bootstrap-webhook
 # re-provision clients...
 ```
+
+### Handing the admin UI to a new operator (e.g. Alex)
+
+The admin UI (`apps/admin-ui`, port 3001) authenticates against cal.diy.
+For someone to log in they need **two** things:
+
+1. A cal.diy user account (any sign-up flow works).
+2. That user's `role` set to `ADMIN` in cal.diy's `users` table.
+
+cal.diy doesn't expose role promotion in its UI, so do it in SQL:
+
+```bash
+docker exec -i database psql -U unicorn_user -d calendso \
+  -c "UPDATE users SET role = 'ADMIN' WHERE email = 'alex@agency.example';"
+```
+
+After that, `https://<admin-ui-host>:3001/login` accepts those credentials.
+
+> **Note on `INACTIVE_ADMIN`** — cal.diy reports a user's effective role
+> as `INACTIVE_ADMIN` when they have `role = ADMIN` but haven't enabled
+> 2FA. The admin-api treats both `ADMIN` and `INACTIVE_ADMIN` as admin,
+> so the user can sign in and work without 2FA. Encourage 2FA anyway —
+> the role downgrade is cal.diy's nudge, not ours.
+
+> **Per-client passwords are read from `.data/<email>.json`**. If you
+> blow that directory away (see "Resetting the local cal.diy stack") the
+> admin UI's "Reveal" / "Copy password" buttons will stop showing the
+> first-login password for old clients. The password still exists in
+> cal.diy's DB; it's just no longer recoverable from disk. Fresh
+> provisions through the UI write the file back.
+
+> **`.data` must be a persistent volume in production.** The compose
+> file bind-mounts the host's `.data` into the admin-api container. If
+> you redeploy and lose that mount, you lose the manifest and every
+> first-login password. Plan accordingly.
+
+### Admin session secret
+
+The admin-api signs session JWTs with `ADMIN_SESSION_SECRET` (HS256,
+24h TTL by default). Set it once in `apps/admin-api/.env`:
+
+```bash
+echo "ADMIN_SESSION_SECRET=$(openssl rand -hex 32)" >> apps/admin-api/.env
+```
+
+Rotating the secret invalidates every outstanding session — operators
+will be bounced to `/login` on their next request. That's the only
+"sign everyone out" lever; there's no per-user revoke.
 
 ## Known limitations
 
