@@ -7,13 +7,18 @@ Strict ordering — each step must succeed before the next:
     3. create + update schedule (tRPC)   │ idempotent on re-run
     4. create + update event type (tRPC) ─┘
 
+Note: webhook registration moved out of this loop. cal.diy fires webhooks
+for every booking via the single PLATFORM webhook (set up once via the
+`glink-provision bootstrap-webhook` subcommand). Per-user webhooks here
+are no longer needed — the platform webhook covers every client.
+
 Failure at any step raises ProvisionError tagging the client + step.
 """
 from __future__ import annotations
 
 import secrets
 import string
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 from cal_client import Client, ProvisionedClient, Settings
 from cal_client.cal_web import (
@@ -21,7 +26,6 @@ from cal_client.cal_web import (
     SignupConflict,
     create_event_type,
     create_schedule,
-    ensure_webhook,
     login,
     signup,
     standard_booking_fields,
@@ -31,7 +35,6 @@ from cal_client.cal_web import (
 )
 
 from provisioning import defaults, store
-from provisioning.settings import WebhookSettings
 
 
 class ProvisionError(RuntimeError):
@@ -52,13 +55,11 @@ class ProvisionError(RuntimeError):
 class ProvisionResult:
     record: ProvisionedClient
     created: bool  # True if the user was newly signed up; False if already existed
-    webhook_created: bool = False  # True if a new webhook was registered this run
 
 
 def _generate_password() -> str:
     """20-char password from a friendly alphabet (no ambiguous chars)."""
     alphabet = string.ascii_letters + string.digits + "!@#$%^&*-_=+"
-    # Avoid leading/trailing punctuation that some shells mangle when echoed
     body = "".join(secrets.choice(alphabet) for _ in range(20))
     return body
 
@@ -67,11 +68,7 @@ def _booking_link(base: str, slug: str, event_slug: str) -> str:
     return f"{base}/{slug}/{event_slug}"
 
 
-def provision_client(
-    client: Client,
-    settings: Settings,
-    webhook_settings: WebhookSettings,
-) -> ProvisionResult:
+def provision_client(client: Client, settings: Settings) -> ProvisionResult:
     base = settings.cal_web_base
 
     # 1. signup ---------------------------------------------------------------
@@ -82,8 +79,6 @@ def provision_client(
             signup(base, email=client.email, password=password, username=client.slug)
             created = True
         except SignupConflict as exc:
-            # Race: someone else (UI? a parallel run?) created this email.
-            # Without a stored password we cannot log in, so refuse to guess.
             raise ProvisionError(
                 email=client.email,
                 step="signup",
@@ -152,51 +147,33 @@ def provision_client(
                 after_buffer_minutes=defaults.AFTER_BUFFER_MINUTES,
                 rolling_window_days=defaults.ROLLING_WINDOW_DAYS,
                 booking_fields=standard_booking_fields(defaults.EXTRA_BOOKING_QUESTIONS),
+                max_bookings_per_day=defaults.MAX_BOOKINGS_PER_DAY,
             )
         except CalWebError as exc:
             raise ProvisionError(
                 email=client.email, step="event_type", message=str(exc), cause=exc
             ) from exc
 
-        # Persist what we know BEFORE the webhook step so a webhook
-        # failure leaves a recoverable record (re-runs can retry the
-        # webhook step without re-signing-up the user).
-        partial_record = ProvisionedClient(
-            email=client.email,
-            slug=client.slug,
-            full_name=client.full_name,
-            timezone=client.timezone,
-            password=password,
-            cal_user_id=cal_user_id,
-            schedule_id=schedule_id,
-            event_type_id=event_type_id,
-            event_type_slug=event_type_slug,
-            booking_link=_booking_link(base, client.slug, event_type_slug),
-            work_start=client.work_start,
-            work_end=client.work_end,
-            webhook_id=existing.webhook_id if existing else None,
-            calendly_url=client.calendly_url,
-        )
-        store.save(partial_record)
-
-        try:
-            # 5. webhook ---------------------------------------------------
-            # Per-user scope is the default for new webhooks (one subscription
-            # covers every event type the client owns now or later). Match is
-            # by subscriberUrl across BOTH per-user and per-event-type scopes,
-            # so a leftover per-event-type webhook from earlier testing is
-            # reused rather than duplicated.
-            webhook_id, webhook_created = ensure_webhook(
-                session,
-                subscriber_url=webhook_settings.receiver_url,
-                secret=webhook_settings.shared_secret,
-                event_type_id=event_type_id,
-            )
-        except CalWebError as exc:
-            raise ProvisionError(
-                email=client.email, step="webhook", message=str(exc), cause=exc
-            ) from exc
-
-    final_record = replace(partial_record, webhook_id=webhook_id)
+    final_record = ProvisionedClient(
+        email=client.email,
+        slug=client.slug,
+        full_name=client.full_name,
+        timezone=client.timezone,
+        password=password,
+        cal_user_id=cal_user_id,
+        schedule_id=schedule_id,
+        event_type_id=event_type_id,
+        event_type_slug=event_type_slug,
+        booking_link=_booking_link(base, client.slug, event_type_slug),
+        work_start=client.work_start,
+        work_end=client.work_end,
+        # Pre-existing per-user webhooks (from before the platform-webhook
+        # switch) are preserved on the record but are no longer required —
+        # the platform webhook covers every client. Harmless to leave; the
+        # receiver dedups by (uid, event_type) so a double-delivery from
+        # per-user + platform results in one row.
+        webhook_id=existing.webhook_id if existing else None,
+        calendly_url=client.calendly_url,
+    )
     store.save(final_record)
-    return ProvisionResult(record=final_record, created=created, webhook_created=webhook_created)
+    return ProvisionResult(record=final_record, created=created)

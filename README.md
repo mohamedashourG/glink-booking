@@ -62,17 +62,29 @@ our standard policy:
   booking on a provisioned client lands in the receiver's Postgres
   automatically)
 
-Required env vars:
+Required env var for everyday provisioning:
 
 ```bash
 export CAL_WEB_BASE=http://localhost:3000
-# Webhook wiring — both required:
-export RECEIVER_WEBHOOK_URL=http://host.docker.internal:8000/webhook
-export CAL_WEBHOOK_SECRET=<same value as apps/receiver/.env CAL_WEBHOOK_SECRET>
 ```
 
-`CAL_WEBHOOK_SECRET` here MUST be the same value the receiver was
-started with. They sign and verify the same envelopes.
+Webhook delivery is set up **once** via the `bootstrap-webhook`
+subcommand, which registers a single global cal.diy "platform" webhook
+that fires for every booking across every client (replaces the
+per-client webhook registration we used to do here):
+
+```bash
+export RECEIVER_WEBHOOK_URL=http://host.docker.internal:8000/webhook
+export CAL_WEBHOOK_SECRET=<same value as apps/receiver/.env>
+export CAL_ADMIN_EMAIL=<your cal.diy system-admin email>
+export CAL_ADMIN_PASSWORD=<that user's password>
+
+uv run glink-provision bootstrap-webhook   # idempotent, run once per instance
+```
+
+After that, `single` and `batch` provisioning runs only need
+`CAL_WEB_BASE`. Full operator docs live in
+[apps/ops/RUNBOOK.md](apps/ops/RUNBOOK.md).
 
 Single client (no fallback URL):
 

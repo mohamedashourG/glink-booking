@@ -396,23 +396,27 @@ def update_event_type(
     after_buffer_minutes: int,
     rolling_window_days: int,
     booking_fields: list[dict],
+    max_bookings_per_day: int | None = None,
 ) -> None:
-    """Apply our standard booking-policy config to an existing event type."""
-    session.trpc_mutation(
-        "eventTypesHeavy",
-        "update",
-        {
-            "id": event_type_id,
-            "minimumBookingNotice": minimum_notice_minutes,
-            "beforeEventBuffer": before_buffer_minutes,
-            "afterEventBuffer": after_buffer_minutes,
-            "periodType": "ROLLING",
-            "periodDays": rolling_window_days,
-            "periodCountCalendarDays": True,
-            "scheduleId": schedule_id,
-            "bookingFields": booking_fields,
-        },
-    )
+    """Apply our standard booking-policy config to an existing event type.
+
+    `max_bookings_per_day` maps to cal.diy's bookingLimits.PER_DAY (the
+    intervalLimitsType shape; see packages/prisma/zod-utils.ts).
+    """
+    payload: dict = {
+        "id": event_type_id,
+        "minimumBookingNotice": minimum_notice_minutes,
+        "beforeEventBuffer": before_buffer_minutes,
+        "afterEventBuffer": after_buffer_minutes,
+        "periodType": "ROLLING",
+        "periodDays": rolling_window_days,
+        "periodCountCalendarDays": True,
+        "scheduleId": schedule_id,
+        "bookingFields": booking_fields,
+    }
+    if max_bookings_per_day is not None:
+        payload["bookingLimits"] = {"PER_DAY": max_bookings_per_day}
+    session.trpc_mutation("eventTypesHeavy", "update", payload)
 
 
 # ----- webhook registration --------------------------------------------------
@@ -436,6 +440,10 @@ def list_user_webhooks(session: CalWebSession) -> list[dict]:
     Per-event-type webhooks (which carry `userId=NULL` + an `eventTypeId`)
     are NOT returned here — `webhook.list` filters by `ctx.user.id` and
     misses them. Use `list_event_type_webhooks` for those.
+
+    When called as a system ADMIN, the response ALSO includes platform-
+    scoped webhooks (WebhookRepository.listWebhooks adds them for admin
+    users), so this is the right call for the bootstrap path too.
     """
     out = session.trpc_query("webhook", "list", None)
     if isinstance(out, list):
@@ -486,6 +494,42 @@ def create_webhook(
         },
     )
     return str(out["id"])
+
+
+def ensure_platform_webhook(
+    admin_session: CalWebSession,
+    *,
+    subscriber_url: str,
+    secret: str,
+    triggers: list[str] | None = None,
+) -> tuple[str, bool]:
+    """Idempotently create the ONE global cal.diy platform webhook.
+
+    cal.diy stores `platform=true` webhooks at the instance level — they
+    fire for EVERY booking trigger regardless of user / team / event type
+    (see WebhookRepository.getSubscribersRaw priority-1 union branch).
+    The session must be the system admin's; the create handler hard-checks
+    `user.role === "ADMIN"` before accepting `platform=true`.
+
+    Matches existing platform webhooks by subscriberUrl, never duplicates.
+    Returns `(webhook_id, created)`.
+    """
+    for wh in list_user_webhooks(admin_session):
+        if wh.get("subscriberUrl") == subscriber_url and wh.get("platform"):
+            return str(wh["id"]), False
+    out = admin_session.trpc_mutation(
+        "webhook",
+        "create",
+        {
+            "subscriberUrl": subscriber_url,
+            "eventTriggers": triggers or list(BOOKING_TRIGGER_EVENTS),
+            "active": True,
+            "payloadTemplate": None,
+            "secret": secret,
+            "platform": True,
+        },
+    )
+    return str(out["id"]), True
 
 
 def ensure_webhook(

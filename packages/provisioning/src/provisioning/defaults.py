@@ -8,6 +8,7 @@ BEFORE_BUFFER_MINUTES = 15
 AFTER_BUFFER_MINUTES = 15
 MINIMUM_NOTICE_MINUTES = 4 * 60  # 4 hours
 ROLLING_WINDOW_DAYS = 60
+MAX_BOOKINGS_PER_DAY = 5  # cap an individual day so a slate doesn't get carpet-bombed
 
 SCHEDULE_NAME = "Working Hours"
 

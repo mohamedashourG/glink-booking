@@ -1,4 +1,4 @@
-"""Command-line interface: single-client and CSV-batch provisioning."""
+"""Command-line interface: per-client provisioning + one-time admin bootstrap."""
 from __future__ import annotations
 
 import argparse
@@ -9,6 +9,7 @@ from pathlib import Path
 from cal_client import Client, load_settings
 
 from provisioning import store
+from provisioning.admin import bootstrap_platform_webhook, load_admin_creds
 from provisioning.provision import ProvisionError, ProvisionResult, provision_client
 from provisioning.settings import load_webhook_settings
 
@@ -30,8 +31,7 @@ def _add_client_args(p: argparse.ArgumentParser) -> None:
 def _print_result(res: ProvisionResult) -> None:
     rec = res.record
     state = "created" if res.created else "updated"
-    wh = "new webhook" if res.webhook_created else "webhook reused"
-    print(f"  ✓ {state} {rec.email}  [{wh} {rec.webhook_id}]")
+    print(f"  ✓ {state} {rec.email}")
     print(f"      booking link : {rec.booking_link}")
     print(f"      first-login pw: {rec.password}")
 
@@ -79,13 +79,36 @@ def _clients_from_csv(path: Path) -> list[Client]:
         return out
 
 
-def _run_one(client: Client, *, settings, webhook_settings) -> ProvisionResult | None:
+def _run_one(client: Client, *, settings) -> ProvisionResult | None:
     try:
-        return provision_client(client, settings, webhook_settings)
+        return provision_client(client, settings)
     except ProvisionError as exc:
         # Loud, single-line failure that names the client + the step.
         print(f"  ✗ FAILED at step '{exc.step}' for {exc.email}: {exc}", file=sys.stderr)
         return None
+
+
+def _cmd_bootstrap_webhook(settings) -> int:
+    """Idempotently register THE single platform webhook against the receiver.
+
+    Run this ONCE per cal.diy instance — provisioning no longer registers
+    per-client webhooks because the platform webhook fires for every booking
+    across every user (see cal.diy WebhookRepository.getSubscribersRaw,
+    priority-1 union branch).
+    """
+    webhook = load_webhook_settings()
+    admin = load_admin_creds()
+    print(f"cal.diy web base: {settings.cal_web_base}")
+    print(f"webhook receiver: {webhook.receiver_url}")
+    print(f"admin login    : {admin.email}")
+    webhook_id, created = bootstrap_platform_webhook(
+        cal_web_base=settings.cal_web_base,
+        admin=admin,
+        subscriber_url=webhook.receiver_url,
+        shared_secret=webhook.shared_secret,
+    )
+    print(f"  ✓ {'created' if created else 'already exists'}: platform webhook {webhook_id}")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -98,14 +121,21 @@ def main(argv: list[str] | None = None) -> int:
     batch = sub.add_parser("batch", help="Provision every row of a CSV")
     batch.add_argument("csv_path", type=Path, help="Path to CSV with columns full_name,email,slug,...")
 
+    sub.add_parser(
+        "bootstrap-webhook",
+        help="One-time: register the global platform webhook against the receiver. Needs CAL_ADMIN_EMAIL + CAL_ADMIN_PASSWORD + RECEIVER_WEBHOOK_URL + CAL_WEBHOOK_SECRET in env.",
+    )
+
     args = parser.parse_args(argv)
     settings = load_settings()
-    webhook_settings = load_webhook_settings()
+
+    if args.cmd == "bootstrap-webhook":
+        return _cmd_bootstrap_webhook(settings)
+
     print(f"cal.diy web base: {settings.cal_web_base}")
-    print(f"webhook receiver: {webhook_settings.receiver_url}")
 
     if args.cmd == "single":
-        result = _run_one(_client_from_args(args), settings=settings, webhook_settings=webhook_settings)
+        result = _run_one(_client_from_args(args), settings=settings)
         if result is None:
             return 1
         _print_result(result)
@@ -120,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
     failures = 0
     for c in clients:
         print(f"→ {c.email}")
-        r = _run_one(c, settings=settings, webhook_settings=webhook_settings)
+        r = _run_one(c, settings=settings)
         if r is None:
             failures += 1
         else:
