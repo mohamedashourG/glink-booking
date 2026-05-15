@@ -5,7 +5,7 @@ import json
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response
+from fastapi import BackgroundTasks, FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
 from receiver import db, extract, fanout, signature
@@ -31,7 +31,8 @@ async def lifespan(app: FastAPI):
     db.apply_schema(pool)
     app.state.settings = settings
     app.state.pool = pool
-    log.info("receiver started")
+    configured = fanout.configured_integrations()
+    log.info("receiver started — fan-out integrations configured: %s", configured or "(none)")
     try:
         yield
     finally:
@@ -48,7 +49,7 @@ def health() -> dict:
 
 
 @app.post("/webhook")
-async def webhook(request: Request) -> Response:
+async def webhook(request: Request, background_tasks: BackgroundTasks) -> Response:
     raw_body = await request.body()
     provided_sig = request.headers.get(signature.SIGNATURE_HEADER)
 
@@ -80,23 +81,22 @@ async def webhook(request: Request) -> Response:
 
     # Postgres write is the priority operation. Any failure here propagates as
     # a 500 so cal.diy retries — which is exactly what we want for durability.
-    inserted = db.insert_booking(request.app.state.pool, booking, envelope)
+    pool = request.app.state.pool
+    inserted = db.insert_booking(pool, booking, envelope)
 
     if inserted:
         log.info(
             "stored %s booking %s (client=%s)",
             booking.event_type, booking.cal_booking_uid, booking.client_slug,
         )
-        # Fan-out is best-effort and runs only after the DB row is on disk.
-        # Today this is a no-op; future targets (Slack, HubSpot, email) plug
-        # in here. See fanout.py for the contract.
-        try:
-            fanout.dispatch_external(booking, envelope)
-        except Exception:
-            log.exception("fanout failed for %s; durability row is safe", booking.cal_booking_uid)
+        # Fan-out runs as a background task AFTER the 2xx is sent. cal.diy
+        # gets a fast response; integrations take their time. Fires only on
+        # newly-stored rows, never on a dedup hit (so retries don't double-
+        # post to Slack/HubSpot/email).
+        background_tasks.add_task(fanout.dispatch_external, booking, envelope, pool=pool)
     else:
         log.info(
-            "duplicate %s for booking %s ignored (already on disk)",
+            "duplicate %s for booking %s ignored (already on disk; fan-out skipped)",
             booking.event_type, booking.cal_booking_uid,
         )
 

@@ -20,8 +20,41 @@ Non-goals (deliberate):
 - the receiver never calls cal.diy
 - the receiver never writes into cal.diy's database
 
-Fan-out seam: see [`fanout.py`](src/receiver/fanout.py). It's a no-op
-today; future targets plug in there *after* the DB row is on disk.
+## Fan-out: Slack / HubSpot / Email
+
+After the DB row is committed and the 2xx returned, three best-effort
+integrations fire in a background task ([`fanout.py`](src/receiver/fanout.py)).
+They run **concurrently** so a slow one doesn't block the others.
+
+- They fire **only on newly-stored rows** — a cal.diy retry (deduped by
+  the UNIQUE constraint) does NOT re-post to Slack/HubSpot/email.
+- Each integration is independent. A failure or hang in one is logged
+  and contained; it never affects the others, the DB row, or the
+  response cal.diy already received.
+- Each reads its own env vars. Unset = silently skipped at startup
+  ("not configured"). The receiver runs cleanly with zero, one, two,
+  or all three configured.
+- Known limitation, accepted for now: if the receiver process crashes
+  between the 2xx and the background task running, that booking's
+  fan-out is lost. The DB row persisted, so a future replay tool can
+  re-fire — out of scope here.
+
+### Env vars
+
+| Var                    | Required for       | Notes |
+|------------------------|--------------------|-------|
+| `CAL_WEBHOOK_SECRET`   | the receiver       | must match the secret on the cal.diy webhook subscription |
+| `DATABASE_URL`         | the receiver       | set by docker-compose; points at the bundled Postgres |
+| `SLACK_WEBHOOK_URL`    | Slack integration  | incoming-webhook URL from your Slack app config |
+| `HUBSPOT_TOKEN`        | HubSpot integration | private-app access token |
+| `HUBSPOT_PIPELINE_ID`  | HubSpot deal step  | optional. With `HUBSPOT_DEAL_STAGE`, also creates a deal at that stage. If unset (or HubSpot rejects them), contact + meeting still sync — only the deal step is skipped |
+| `HUBSPOT_DEAL_STAGE`   | HubSpot deal step  | optional, internal stage id |
+| `RESEND_API_KEY`       | email integration  | from <https://resend.com/api-keys> |
+| `RESEND_FROM_EMAIL`    | email integration  | sender — for local dev you can use Resend's test sender `onboarding@resend.dev`, sending to your own verified address |
+| `AGENCY_NOTIFY_EMAIL`  | email integration  | recipient |
+
+Drop them into `apps/receiver/.env` next to `CAL_WEBHOOK_SECRET`. The
+docker-compose file passes them through to the container.
 
 ## Local bring-up
 

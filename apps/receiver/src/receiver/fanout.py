@@ -1,34 +1,57 @@
-"""External-target fan-out seam.
+"""External-target fan-out, run as a background task after the 2xx returns.
 
-This module is INTENTIONALLY a no-op for now. The follow-up piece will
-add real targets (Slack, HubSpot, transactional email, …) here.
-
-Contract for future targets:
-
-  - They receive the same `(ExtractedBooking, raw_payload)` tuple the DB
-    insert just used.
-  - They run AFTER the Postgres insert has succeeded — never before. The
-    DB row is the durability anchor; external delivery is best-effort
-    on top of that.
-  - Their failures must NOT propagate into the HTTP response: cal.diy
-    has already done its part once the row is on disk. Fan-out failures
-    should be logged and (eventually) retried out-of-band.
-
-Until those targets exist, dispatching is a logged no-op.
+Contract:
+- Runs ONLY for newly-stored rows. cal.diy retries (deduped by the DB's
+  UNIQUE constraint) must not double-post.
+- Each integration is independent: a failure or hang in one MUST NOT
+  affect the others, the DB row, or the response. We `asyncio.gather`
+  them with `return_exceptions=True` and never re-raise.
+- The DB row is the durability anchor. Known limitation: if the
+  receiver crashes between the 2xx and this background task running,
+  this booking's external dispatch is lost. The row is still on disk,
+  so a future replay tool can re-fire — out of scope for now.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 
+from psycopg_pool import ConnectionPool
+
 from receiver.extract import ExtractedBooking
+from receiver.integrations import email as email_integration
+from receiver.integrations import hubspot as hubspot_integration
+from receiver.integrations import slack as slack_integration
 
 log = logging.getLogger(__name__)
 
 
-def dispatch_external(booking: ExtractedBooking, raw_payload: dict) -> None:
-    # No-op. Replace with parallel target dispatch when adding Slack / HubSpot / email.
-    log.debug(
-        "fanout: would dispatch %s for booking %s (no targets configured)",
-        booking.event_type,
-        booking.cal_booking_uid,
-    )
+_INTEGRATIONS = (
+    ("slack", slack_integration),
+    ("hubspot", hubspot_integration),
+    ("email", email_integration),
+)
+
+
+async def _safe_dispatch(name: str, mod, booking: ExtractedBooking, raw_payload: dict, pool: ConnectionPool) -> None:
+    try:
+        await mod.dispatch(booking, raw_payload, pool=pool)
+    except Exception:
+        log.exception("fanout: %s integration raised for booking %s", name, booking.cal_booking_uid)
+
+
+async def dispatch_external(
+    booking: ExtractedBooking,
+    raw_payload: dict,
+    *,
+    pool: ConnectionPool,
+) -> None:
+    """Run all configured integrations concurrently. Always returns; never raises."""
+    coros = [_safe_dispatch(name, mod, booking, raw_payload, pool) for name, mod in _INTEGRATIONS]
+    await asyncio.gather(*coros, return_exceptions=True)
+    log.info("fanout: completed for booking %s (%s)", booking.cal_booking_uid, booking.event_type)
+
+
+def configured_integrations() -> list[str]:
+    """Names of integrations that have credentials in env (for startup logging)."""
+    return [name for name, mod in _INTEGRATIONS if mod.is_configured()]

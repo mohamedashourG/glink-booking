@@ -26,3 +26,12 @@ CREATE TABLE IF NOT EXISTS bookings (
 
 CREATE INDEX IF NOT EXISTS bookings_client_slug_idx  ON bookings (client_slug);
 CREATE INDEX IF NOT EXISTS bookings_received_at_idx  ON bookings (received_at DESC);
+
+-- Lifecycle tracking for the HubSpot meeting engagement: created on the first
+-- BOOKING_CREATED row for a given uid, then reused on RESCHEDULED/CANCELLED so
+-- we update the SAME meeting instead of duplicating. Lookup is via the latest
+-- row for that uid that has a non-null hubspot_meeting_id.
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS hubspot_meeting_id TEXT;
+CREATE INDEX IF NOT EXISTS bookings_uid_hsmeeting_idx
+    ON bookings (cal_booking_uid)
+    WHERE hubspot_meeting_id IS NOT NULL;

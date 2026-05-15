@@ -89,3 +89,39 @@ def insert_booking(
             row = cur.fetchone()
         conn.commit()
     return row is not None
+
+
+def find_hubspot_meeting_id(pool: ConnectionPool, cal_booking_uid: str) -> str | None:
+    """Most recent HubSpot meeting id we've recorded for this booking, if any.
+
+    Used by the HubSpot integration to reuse the same meeting across the
+    BOOKING_CREATED → RESCHEDULED → CANCELLED lifecycle (so we update one
+    record instead of creating a fresh meeting per event).
+    """
+    sql = """
+        SELECT hubspot_meeting_id
+          FROM bookings
+         WHERE cal_booking_uid = %s
+           AND hubspot_meeting_id IS NOT NULL
+         ORDER BY id DESC
+         LIMIT 1
+    """
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (cal_booking_uid,))
+            row = cur.fetchone()
+    return row[0] if row else None
+
+
+def set_hubspot_meeting_id(pool: ConnectionPool, cal_booking_uid: str, event_type: str, meeting_id: str) -> None:
+    """Tag the (uid, event_type) row with the HubSpot meeting id we created/reused."""
+    sql = """
+        UPDATE bookings
+           SET hubspot_meeting_id = %s
+         WHERE cal_booking_uid = %s
+           AND event_type = %s
+    """
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (meeting_id, cal_booking_uid, event_type))
+        conn.commit()

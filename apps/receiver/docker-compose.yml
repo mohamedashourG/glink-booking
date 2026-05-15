@@ -31,6 +31,14 @@ services:
     environment:
       DATABASE_URL: postgres://receiver:receiver@postgres:5432/receiver
       CAL_WEBHOOK_SECRET: ${CAL_WEBHOOK_SECRET:?set CAL_WEBHOOK_SECRET in apps/receiver/.env}
+      # --- fan-out integrations (all optional; unset = skipped silently) ---
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      HUBSPOT_TOKEN: ${HUBSPOT_TOKEN:-}
+      HUBSPOT_PIPELINE_ID: ${HUBSPOT_PIPELINE_ID:-}
+      HUBSPOT_DEAL_STAGE: ${HUBSPOT_DEAL_STAGE:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
+      AGENCY_NOTIFY_EMAIL: ${AGENCY_NOTIFY_EMAIL:-}
     ports:
       - "8000:8000"
     depends_on:

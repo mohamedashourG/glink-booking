@@ -34,6 +34,10 @@ class ExtractedBooking:
     video_link: str | None
     utm: dict[str, str | None]
     custom_responses: dict[str, Any]
+    # On RESCHEDULED, cal.diy mints a new uid for the new booking and puts
+    # the original booking's uid into `payload.rescheduleUid`. Integrations
+    # that track lifecycle by uid (e.g. HubSpot meeting reuse) need this.
+    previous_uid: str | None = None
 
 
 def _str(node: Any) -> str | None:
@@ -143,4 +147,5 @@ def extract(envelope: dict) -> ExtractedBooking:
         video_link=_video_link(payload),
         utm=_utm(payload),
         custom_responses=payload.get("responses") or {},
+        previous_uid=_str(payload.get("rescheduleUid")),
     )
