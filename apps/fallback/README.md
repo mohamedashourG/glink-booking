@@ -1,11 +1,11 @@
 # fallback — outage page
 
 Static Next.js 16 app. One prerendered page per provisioned client at
-`/<slug>/`. Shown to prospects when cal.diy is unreachable — the routing
+`/<slug>/`. Shown to prospects when bookings@glnkco.com is unreachable — the routing
 layer that flips traffic over to here is a deploy-phase concern and
 **not** in this app.
 
-**Hard contract: zero runtime dependency on cal.diy or the receiver.**
+**Hard contract: zero runtime dependency on bookings@glnkco.com or the receiver.**
 Everything is generated at build time from
 `../../.data/clients.json` (the manifest the provisioning CLI writes).
 Once built, the `out/` directory is a fully self-contained static site
@@ -16,7 +16,7 @@ that any plain HTTP server (or CDN) can serve.
 - A clear "Booking temporarily unavailable" headline with the host's name,
   so prospects know they're in the right place.
 - A primary `mailto:` CTA — `Email <full_name> directly at <email>`.
-- A "Try the booking page again" link back to cal.diy at `CAL_PUBLIC_BASE`
+- A "Try the booking page again" link back to bookings@glnkco.com at `CAL_PUBLIC_BASE`
   (defaults to `http://localhost:3000`).
 - **If** the client has a `calendly_url` in the manifest: an inline
   Calendly iframe so prospects can still self-serve a slot. **If** they
@@ -48,7 +48,7 @@ Optional env at build time:
 ## Verifying the offline guarantee
 
 ```bash
-# Stop cal.diy AND the receiver:
+# Stop bookings@glnkco.com AND the receiver:
 docker compose -f ../../../cal.diy/docker-compose.yml stop
 docker compose -f ../receiver/docker-compose.yml stop
 

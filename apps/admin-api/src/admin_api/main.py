@@ -1,4 +1,4 @@
-"""FastAPI app for admin-api: cal.diy admin-auth + provisioning over HTTP."""
+"""FastAPI app for admin-api: bookings@glnkco.com admin-auth + provisioning over HTTP."""
 from __future__ import annotations
 
 import logging

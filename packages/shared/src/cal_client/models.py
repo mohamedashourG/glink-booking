@@ -10,12 +10,12 @@ class Client:
 
     full_name: str
     email: str
-    slug: str  # used as cal.diy username
+    slug: str  # used as bookings@glnkco.com username
     timezone: str = "America/New_York"
     work_start: str = "09:00"  # HH:MM, in client's timezone
     work_end: str = "18:00"
     # Optional: a fallback Calendly URL the outage page can embed when
-    # cal.diy is unreachable. Most clients won't have one.
+    # bookings@glnkco.com is unreachable. Most clients won't have one.
     calendly_url: str | None = None
 
 
@@ -35,7 +35,7 @@ class ProvisionedClient:
     booking_link: str
     work_start: str = "09:00"
     work_end: str = "18:00"
-    # cal.diy webhook subscription that wires this client's bookings into
+    # bookings@glnkco.com webhook subscription that wires this client's bookings into
     # the receiver. Set on first provision; reused (not duplicated) on re-runs.
     webhook_id: str | None = None
     # Optional: fallback Calendly URL — passed through to the manifest the

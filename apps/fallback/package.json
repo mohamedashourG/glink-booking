@@ -2,7 +2,7 @@
   "name": "glink-fallback",
   "version": "0.1.0",
   "private": true,
-  "description": "Static outage-fallback page rendered per provisioned client. Reads ../../.data/clients.json at build time. ZERO runtime dependency on cal.diy or the receiver.",
+  "description": "Static outage-fallback page rendered per provisioned client. Reads ../../.data/clients.json at build time. ZERO runtime dependency on bookings@glnkco.com or the receiver.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

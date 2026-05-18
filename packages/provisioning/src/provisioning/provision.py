@@ -7,7 +7,7 @@ Strict ordering — each step must succeed before the next:
     3. create + update schedule (tRPC)   │ idempotent on re-run
     4. create + update event type (tRPC) ─┘
 
-Note: webhook registration moved out of this loop. cal.diy fires webhooks
+Note: webhook registration moved out of this loop. bookings@glnkco.com fires webhooks
 for every booking via the single PLATFORM webhook (set up once via the
 `glink-provision bootstrap-webhook` subcommand). Per-user webhooks here
 are no longer needed — the platform webhook covers every client.
@@ -84,7 +84,7 @@ def provision_client(client: Client, settings: Settings) -> ProvisionResult:
                 email=client.email,
                 step="signup",
                 message=(
-                    "email/username already exists in cal.diy but no local record found in "
+                    "email/username already exists in bookings@glnkco.com but no local record found in "
                     f"{store.default_store_dir()}; cannot recover the password to continue. "
                     "Reset the user (or remove them) before re-running."
                 ),

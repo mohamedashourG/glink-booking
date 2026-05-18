@@ -1,4 +1,4 @@
-"""FastAPI app exposing the cal.diy webhook receiver."""
+"""FastAPI app exposing the bookings@glnkco.com webhook receiver."""
 from __future__ import annotations
 
 import json
@@ -14,7 +14,7 @@ from receiver.config import load_settings
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-# Recognized cal.diy event types. Anything else is a logged no-op (200 OK,
+# Recognized bookings@glnkco.com event types. Anything else is a logged no-op (200 OK,
 # nothing written) — per spec, unknown events are not errors.
 _HANDLED_EVENT_TYPES = {
     "BOOKING_CREATED",
@@ -80,7 +80,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks) -> Respon
         log.warning("payload had no booking uid; stored under synthetic key %s", booking.cal_booking_uid)
 
     # Postgres write is the priority operation. Any failure here propagates as
-    # a 500 so cal.diy retries — which is exactly what we want for durability.
+    # a 500 so bookings@glnkco.com retries — which is exactly what we want for durability.
     pool = request.app.state.pool
     inserted = db.insert_booking(pool, booking, envelope)
 
@@ -89,7 +89,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks) -> Respon
             "stored %s booking %s (client=%s)",
             booking.event_type, booking.cal_booking_uid, booking.client_slug,
         )
-        # Fan-out runs as a background task AFTER the 2xx is sent. cal.diy
+        # Fan-out runs as a background task AFTER the 2xx is sent. bookings@glnkco.com
         # gets a fast response; integrations take their time. Fires only on
         # newly-stored rows, never on a dedup hit (so retries don't double-
         # post to Slack/HubSpot/email).

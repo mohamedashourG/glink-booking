@@ -38,10 +38,10 @@ def insert_booking(
     """Insert one booking row.
 
     Returns True if a new row was inserted, False if (cal_booking_uid,
-    event_type) already existed (a duplicate retry from cal.diy).
+    event_type) already existed (a duplicate retry from bookings@glnkco.com).
 
     Raises psycopg errors on real DB failures — callers should let the
-    error bubble so the HTTP handler returns non-2xx and cal.diy retries.
+    error bubble so the HTTP handler returns non-2xx and bookings@glnkco.com retries.
     """
     sql = """
         INSERT INTO bookings (

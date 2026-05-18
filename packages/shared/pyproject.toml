@@ -1,7 +1,7 @@
 [project]
 name = "cal-client"
 version = "0.1.0"
-description = "Shared cal.diy client + config for glink-booking."
+description = "Shared bookings@glnkco.com client + config for glink-booking."
 requires-python = ">=3.11"
 dependencies = [
     "httpx>=0.27",

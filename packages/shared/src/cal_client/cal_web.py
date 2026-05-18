@@ -1,15 +1,15 @@
 """
 =============================================================================
- ⚠️  CAL.DIY WEB INTERNALS — DO NOT USE THIS MODULE OUTSIDE PROVISIONING ⚠️
+ ⚠️  BOOKINGS@GLNKCO.COM WEB INTERNALS — DO NOT USE THIS MODULE OUTSIDE PROVISIONING ⚠️
 =============================================================================
 
-Everything in this file talks to cal.diy's *web app*, not its public API v2.
+Everything in this file talks to bookings@glnkco.com's *web app*, not its public API v2.
 
-We use it because cal.diy's API v2 in this build does not expose:
+We use it because bookings@glnkco.com's API v2 in this build does not expose:
   - user creation (no /v2/users controller; OAuth-managed-users path is org-gated)
   - per-user API key bootstrap (the apiKeys tRPC router is never mounted)
 
-Instead we use the same surface the cal.diy *browser UI* uses:
+Instead we use the same surface the bookings@glnkco.com *browser UI* uses:
   - POST /api/auth/signup                        (web route handler)
   - GET  /api/auth/csrf                          (NextAuth)
   - POST /api/auth/callback/credentials          (NextAuth credentials login)
@@ -18,7 +18,7 @@ Instead we use the same surface the cal.diy *browser UI* uses:
   - POST /api/trpc/eventTypesHeavy/create        (   "      "      "        )
   - POST /api/trpc/eventTypesHeavy/update        (   "      "      "        )
 
-Things that will break us if cal.diy upstream changes them:
+Things that will break us if bookings@glnkco.com upstream changes them:
   - URL paths above (especially the tRPC mount layout)
   - signup payload shape (`{email, password, username, language}`)
   - NextAuth `next-auth.session-token` cookie name
@@ -26,7 +26,7 @@ Things that will break us if cal.diy upstream changes them:
   - The `bookingFields` validation that requires a required `email` entry
   - The schedule shape `[][]` indexed by weekday, with `Date` start/end
 
-If you find yourself wanting to call cal.diy from another package in this
+If you find yourself wanting to call bookings@glnkco.com from another package in this
 monorepo, DO NOT import from here. Either go through API v2 (preferred for
 anything stable) or extend this module and let me know it grew.
 """
@@ -42,7 +42,7 @@ import httpx
 
 
 class CalWebError(RuntimeError):
-    """Any failure from talking to cal.diy's web layer.
+    """Any failure from talking to bookings@glnkco.com's web layer.
 
     Carries the URL and response body so the CLI can surface which step
     failed for which client.
@@ -85,7 +85,7 @@ def _superjson_encode(value: Any) -> dict:
 
 @dataclass
 class CalWebSession:
-    """An authenticated cal.diy web session for one user.
+    """An authenticated bookings@glnkco.com web session for one user.
 
     Holds the httpx Client carrying the NextAuth session cookie.
     Use it via `with` so the client closes cleanly.
@@ -115,11 +115,11 @@ class CalWebSession:
     def trpc_query(self, endpoint: str, procedure: str, input_value: Any) -> Any:
         """GET /api/trpc/<endpoint>/<procedure>?input=<superjson> for query procedures.
 
-        cal.diy's tRPC mount distinguishes queries (GET) from mutations (POST);
+        bookings@glnkco.com's tRPC mount distinguishes queries (GET) from mutations (POST);
         calling a query via POST returns 404 ("No 'mutation'-procedure on path …").
 
         For optional-input queries, pass `input_value=None` and we omit the
-        `?input` query string entirely — cal.diy rejects `{"json": null}` as
+        `?input` query string entirely — bookings@glnkco.com rejects `{"json": null}` as
         "Invalid input" but is happy with no input at all.
         """
         url = f"{self.base}/api/trpc/{endpoint}/{procedure}"
@@ -267,7 +267,7 @@ def login(base: str, *, email: str, password: str) -> CalWebSession:
 def _date_at(hour_minute: str) -> dt.datetime:
     """Build a 1970-01-01 UTC datetime that encodes only a time-of-day.
 
-    cal.diy stores schedule start/end times as Date objects where only
+    bookings@glnkco.com stores schedule start/end times as Date objects where only
     hours/minutes are meaningful (the date portion is conventionally
     1970-01-01). This matches the format the UI sends.
     """
@@ -278,7 +278,7 @@ def _date_at(hour_minute: str) -> dt.datetime:
 def weekday_schedule(work_start: str, work_end: str) -> list[list[dict]]:
     """Mon–Fri working hours; weekends empty.
 
-    Index 0 = Sunday … 6 = Saturday (matches cal.diy's getAvailabilityFromSchedule).
+    Index 0 = Sunday … 6 = Saturday (matches bookings@glnkco.com's getAvailabilityFromSchedule).
     """
     weekday = [{"start": _date_at(work_start), "end": _date_at(work_end)}]
     return [[], weekday, weekday, weekday, weekday, weekday, []]
@@ -287,7 +287,7 @@ def weekday_schedule(work_start: str, work_end: str) -> list[list[dict]]:
 def create_schedule(session: CalWebSession, *, name: str) -> tuple[int, int]:
     """Create an empty schedule, return `(scheduleId, userId)`.
 
-    `userId` is the cal.diy user the session is authenticated as — it's only
+    `userId` is the bookings@glnkco.com user the session is authenticated as — it's only
     discoverable via response payloads like this one, so we capture it here
     rather than making a second round-trip later.
     """
@@ -340,7 +340,7 @@ def create_event_type(
 
 
 # ----- bookingFields shape ---------------------------------------------------
-# cal.diy validates that the submitted `bookingFields` array contains an
+# bookings@glnkco.com validates that the submitted `bookingFields` array contains an
 # `email` entry with `required: true` (otherwise it throws
 # `booking_fields_email_or_phone_required`). The system also pads in `name` +
 # `email` on read if bookingFields is null, but on update we must include
@@ -351,7 +351,7 @@ _USER_SOURCE = [{"id": "user", "type": "user", "label": "User"}]
 
 
 def standard_booking_fields(extra_questions: list[dict]) -> list[dict]:
-    """Return [name, email, ...extra_questions] in cal.diy field-schema shape.
+    """Return [name, email, ...extra_questions] in bookings@glnkco.com field-schema shape.
 
     `extra_questions` items are dicts like {"name": ..., "label": ...,
     "type": "text"|"textarea", "required": bool}.
@@ -400,7 +400,7 @@ def update_event_type(
 ) -> None:
     """Apply our standard booking-policy config to an existing event type.
 
-    `max_bookings_per_day` maps to cal.diy's bookingLimits.PER_DAY (the
+    `max_bookings_per_day` maps to bookings@glnkco.com's bookingLimits.PER_DAY (the
     intervalLimitsType shape; see packages/prisma/zod-utils.ts).
     """
     payload: dict = {
@@ -420,12 +420,12 @@ def update_event_type(
 
 
 # ----- webhook registration --------------------------------------------------
-# A cal.diy webhook can be scoped per-event-type (eventTypeId set), per-team
+# A bookings@glnkco.com webhook can be scoped per-event-type (eventTypeId set), per-team
 # (teamId set), or per-user (neither). We default to PER-USER so a single
 # subscription covers every event type the client owns now or later.
 # Requires the same NextAuth session as the rest of the tRPC calls.
 
-# All four cal.diy trigger events that map to a booking lifecycle stage.
+# All four bookings@glnkco.com trigger events that map to a booking lifecycle stage.
 BOOKING_TRIGGER_EVENTS = [
     "BOOKING_CREATED",
     "BOOKING_RESCHEDULED",
@@ -456,7 +456,7 @@ def list_user_webhooks(session: CalWebSession) -> list[dict]:
 def list_event_type_webhooks(session: CalWebSession, event_type_id: int) -> list[dict]:
     """Return webhooks scoped to a specific event type.
 
-    Needed because cal.diy stores per-event-type webhooks with `userId=NULL`,
+    Needed because bookings@glnkco.com stores per-event-type webhooks with `userId=NULL`,
     so they don't show up in `list_user_webhooks`. Without this we'd
     duplicate-create when an event-type-scoped webhook already exists.
     """
@@ -503,15 +503,15 @@ def create_platform_webhook(
     secret: str,
     triggers: list[str] | None = None,
 ) -> str:
-    """Unconditionally create the global cal.diy platform webhook.
+    """Unconditionally create the global bookings@glnkco.com platform webhook.
 
-    cal.diy stores `platform=true` webhooks at the instance level — they
+    bookings@glnkco.com stores `platform=true` webhooks at the instance level — they
     fire for EVERY booking trigger regardless of user / team / event type
     (see WebhookRepository.getSubscribersRaw priority-1 union branch).
     The session must be the system admin's; the create handler hard-checks
     `user.role === "ADMIN"` before accepting `platform=true`.
 
-    Returns the new webhook id. **Not idempotent on its own** — cal.diy
+    Returns the new webhook id. **Not idempotent on its own** — bookings@glnkco.com
     will happily store a second platform webhook with the same URL because
     `webhook.list` doesn't surface platform-scoped webhooks even to
     admins (verified live: returns `[]`). The bootstrap CLI tracks state

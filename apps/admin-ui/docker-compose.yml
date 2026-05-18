@@ -2,7 +2,7 @@
 #
 # Stand-alone like the other apps in this monorepo. The container reaches
 # admin-api via host.docker.internal:8002 (admin-api binds :8002 on the
-# host). Same pattern receiver uses to reach cal.diy.
+# host). Same pattern receiver uses to reach bookings@glnkco.com.
 #
 # Run with: docker compose -f apps/admin-ui/docker-compose.yml up -d
 # (admin-api must be up first.)

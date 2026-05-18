@@ -1,6 +1,6 @@
 """Local, gitignored, one-file-per-client store of provisioning records.
 
-Each record contains the generated password and the cal.diy IDs we need for
+Each record contains the generated password and the bookings@glnkco.com IDs we need for
 idempotent re-runs. The directory is gitignored; treat its contents as
 secrets.
 """
@@ -75,9 +75,18 @@ def write_manifest(store_dir: Path | None = None) -> Path:
     for child in sorted(base.glob("*.json")):
         if child.name == MANIFEST_FILENAME:
             continue
+        # Skip dotfiles — macOS AppleDouble sidecars (`._foo.json`) match
+        # `*.json` but are binary metadata, not records. Reading them as
+        # text raises UnicodeDecodeError.
+        if child.name.startswith("."):
+            continue
         try:
             data = json.loads(child.read_text())
-        except (OSError, json.JSONDecodeError):
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        # Skip non-record .json files in the store (e.g. platform_webhook.json),
+        # which match the glob but don't carry per-client fields.
+        if not isinstance(data, dict) or not data.get("slug"):
             continue
         entries.append(
             {

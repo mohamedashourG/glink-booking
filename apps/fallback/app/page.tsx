@@ -1,5 +1,5 @@
 // Root index page — usually nobody lands here directly (the routing layer
-// in front of cal.diy maps a slug like /<slug> straight to the matching
+// in front of bookings@glnkco.com maps a slug like /<slug> straight to the matching
 // per-client page). This index is just a sane placeholder.
 import { calBase } from "@/lib/manifest";
 

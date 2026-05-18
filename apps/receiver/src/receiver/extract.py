@@ -1,4 +1,4 @@
-"""Extract the columns we care about from a cal.diy webhook envelope.
+"""Extract the columns we care about from a bookings@glnkco.com webhook envelope.
 
 The envelope shape is:
 
@@ -34,7 +34,7 @@ class ExtractedBooking:
     video_link: str | None
     utm: dict[str, str | None]
     custom_responses: dict[str, Any]
-    # On RESCHEDULED, cal.diy mints a new uid for the new booking and puts
+    # On RESCHEDULED, bookings@glnkco.com mints a new uid for the new booking and puts
     # the original booking's uid into `payload.rescheduleUid`. Integrations
     # that track lifecycle by uid (e.g. HubSpot meeting reuse) need this.
     previous_uid: str | None = None
@@ -49,7 +49,7 @@ def _str(node: Any) -> str | None:
 
 
 def _response_value(payload: dict, key: str) -> str | None:
-    """cal.diy stores booking-question answers as `{key: {value: ...}}`,
+    """bookings@glnkco.com stores booking-question answers as `{key: {value: ...}}`,
     sometimes flattened to `{key: <value>}` depending on the field type."""
     responses = payload.get("responses") or {}
     if not isinstance(responses, dict):
@@ -63,7 +63,7 @@ def _response_value(payload: dict, key: str) -> str | None:
 
 
 def _video_link(payload: dict) -> str | None:
-    """cal.diy puts the meeting URL in different places depending on integration.
+    """bookings@glnkco.com puts the meeting URL in different places depending on integration.
     Probe the common ones."""
     metadata = payload.get("metadata") or {}
     if isinstance(metadata, dict):
@@ -84,7 +84,7 @@ def _scheduled_at(payload: dict) -> datetime | None:
     if not raw:
         return None
     try:
-        # cal.diy emits ISO-8601 with a `Z` suffix.
+        # bookings@glnkco.com emits ISO-8601 with a `Z` suffix.
         return datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
     except ValueError:
         return None
@@ -93,7 +93,7 @@ def _scheduled_at(payload: dict) -> datetime | None:
 def _utm(payload: dict) -> dict[str, str | None]:
     """Pull UTM values out of the webhook payload.
 
-    cal.diy in this build has TWO UTM-shaped surfaces, only one of which
+    bookings@glnkco.com in this build has TWO UTM-shaped surfaces, only one of which
     actually rides the webhook envelope:
 
       1. `payload.metadata.utm_*` — populated when the booker URL carries
@@ -104,9 +104,9 @@ def _utm(payload: dict) -> dict[str, str | None]:
          path our marketing/embed links must use.**
 
       2. `payload.tracking.{utm_*}` — populated when the booking POST body
-         includes a `tracking` field. cal.diy stores it in its own
+         includes a `tracking` field. bookings@glnkco.com stores it in its own
          `Tracking` table but does NOT include it in webhook payloads in
-         this build. Kept here as a fallback in case a future cal.diy
+         this build. Kept here as a fallback in case a future bookings@glnkco.com
          release fixes that gap.
     """
     metadata = payload.get("metadata") or {}

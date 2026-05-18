@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -20,8 +20,17 @@ import { Avatar } from "@/components/Avatar";
 import { Reveal } from "@/components/Reveal";
 import { CopyButton } from "@/components/CopyButton";
 
-export function NewClientForm() {
+export function NewClientForm({ existingSlugs = [] }: { existingSlugs?: string[] }) {
   const [state, action, pending] = useActionState<SingleResult | undefined, FormData>(provisionSingleAction, undefined);
+  const [slugInput, setSlugInput] = useState("");
+
+  // cal.diy treats slugs as case-insensitive usernames, so compare lowercased.
+  const existingSlugSet = useMemo(
+    () => new Set(existingSlugs.map((s) => s.trim().toLowerCase())),
+    [existingSlugs],
+  );
+  const normalizedSlug = slugInput.trim().toLowerCase();
+  const slugTaken = normalizedSlug.length > 0 && existingSlugSet.has(normalizedSlug);
 
   if (state?.ok) {
     const r = state.data.record;
@@ -88,18 +97,38 @@ export function NewClientForm() {
     <form action={action} className="space-y-6">
       <FieldGroup
         title="Identity"
-        description="The client's name + email become the cal.diy login. The slug becomes their booking-link path."
+        description="The client's name + email become the bookings@glnkco.com login. The slug becomes their booking-link path."
       >
         <Field id="full_name" label="Full name" Icon={User} placeholder="Acme Inc" required />
         <Field id="email" label="Email" type="email" Icon={Mail} placeholder="founder@acme.com" required />
-        <Field
-          id="slug"
-          label="Slug"
-          Icon={Tag}
-          placeholder="acme"
-          required
-          hint="Becomes the cal.diy username and the booking-link path."
-        />
+        <div>
+          <label htmlFor="slug" className="label">Slug</label>
+          <div className="relative">
+            <Tag className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400 pointer-events-none" />
+            <input
+              id="slug"
+              name="slug"
+              type="text"
+              required
+              placeholder="acme"
+              value={slugInput}
+              onChange={(e) => setSlugInput(e.target.value)}
+              aria-invalid={slugTaken || undefined}
+              aria-describedby={slugTaken ? "slug-error" : "slug-hint"}
+              className={`input input-with-icon ${slugTaken ? "border-rose-300 focus:border-rose-500" : ""}`}
+            />
+          </div>
+          {slugTaken ? (
+            <p id="slug-error" className="mt-1.5 text-xs text-rose-700 flex items-start gap-1.5">
+              <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <span>
+                &ldquo;{normalizedSlug}&rdquo; is already in use by another client. Please choose a unique slug.
+              </span>
+            </p>
+          ) : (
+            <p id="slug-hint" className="hint">Becomes the bookings@glnkco.com username and the booking-link path.</p>
+          )}
+        </div>
       </FieldGroup>
 
       <FieldGroup
@@ -115,7 +144,7 @@ export function NewClientForm() {
 
       <FieldGroup
         title="Fallback"
-        description="Used by the outage page when cal.diy is unreachable. Optional."
+        description="Used by the outage page when bookings@glnkco.com is unreachable. Optional."
       >
         <Field
           id="calendly_url"
@@ -134,7 +163,7 @@ export function NewClientForm() {
 
       <div className="flex items-center justify-end gap-2 border-t border-ink-100 pt-5">
         <Link href="/" className="btn-secondary">Cancel</Link>
-        <button type="submit" disabled={pending} className="btn-primary">
+        <button type="submit" disabled={pending || slugTaken} className="btn-primary">
           {pending ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />

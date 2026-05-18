@@ -1,7 +1,7 @@
 [project]
 name = "glink-booking"
 version = "0.1.0"
-description = "Booking system built around a self-hosted cal.diy instance."
+description = "Booking system built around a self-hosted bookings@glnkco.com instance."
 requires-python = ">=3.11"
 dependencies = [
     "cal-client",

@@ -140,7 +140,7 @@ export default async function ClientDetail({ params }: { params: Promise<{ slug:
               )}
             </SectionCard>
 
-            <SectionCard Icon={TerminalSquare} title="cal.diy IDs" eyebrow="Internal">
+            <SectionCard Icon={TerminalSquare} title="bookings@glnkco.com IDs" eyebrow="Internal">
               <DescList
                 dense
                 items={[

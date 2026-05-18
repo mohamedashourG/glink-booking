@@ -1,7 +1,7 @@
-"""Provisioning-specific env vars (the wiring layer between cal.diy and the receiver).
+"""Provisioning-specific env vars (the wiring layer between bookings@glnkco.com and the receiver).
 
 These live here, not in `cal_client.config`, because they're about
-*pointing cal.diy at the receiver* — not about talking to cal.diy.
+*pointing bookings@glnkco.com at the receiver* — not about talking to bookings@glnkco.com.
 """
 from __future__ import annotations
 

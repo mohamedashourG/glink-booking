@@ -219,7 +219,7 @@ async def dispatch(booking: ExtractedBooking, raw_payload: dict, *, pool=None) -
         if not contact_id:
             return  # without a contact there's nothing to associate
 
-        # Try the current uid first, then the previous uid (cal.diy mints a
+        # Try the current uid first, then the previous uid (bookings@glnkco.com mints a
         # new uid on reschedule and puts the original in payload.rescheduleUid).
         existing = None
         if pool is not None:

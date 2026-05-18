@@ -1,7 +1,7 @@
 [project]
 name = "receiver"
 version = "0.1.0"
-description = "FastAPI webhook receiver for cal.diy bookings."
+description = "FastAPI webhook receiver for bookings@glnkco.com bookings."
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",

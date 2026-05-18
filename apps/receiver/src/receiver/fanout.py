@@ -1,7 +1,7 @@
 """External-target fan-out, run as a background task after the 2xx returns.
 
 Contract:
-- Runs ONLY for newly-stored rows. cal.diy retries (deduped by the DB's
+- Runs ONLY for newly-stored rows. bookings@glnkco.com retries (deduped by the DB's
   UNIQUE constraint) must not double-post.
 - Each integration is independent: a failure or hang in one MUST NOT
   affect the others, the DB row, or the response. We `asyncio.gather`

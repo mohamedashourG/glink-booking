@@ -1,0 +1,45 @@
+# Fly.io config — glink-booking receiver (FastAPI webhook sink).
+# Deploy from this directory: `flyctl deploy`.
+#
+# Postgres: a Fly Postgres cluster named glnk-receiver-db is expected to be
+# attached via `fly postgres attach`; that command writes DATABASE_URL into
+# the app's secrets, which is what receiver/config.py reads.
+#
+# CAL_WEBHOOK_SECRET MUST be set via `fly secrets set` before first deploy —
+# it must match the secret that was used when bootstrap-webhook ran against
+# bookings@glnkco.com. If they don't match, every webhook returns 401.
+
+app = "glnk-receiver"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PYTHONUNBUFFERED = "1"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # Keep at least one machine warm so bookings@glnkco.com's webhooks don't pay the
+  # cold-start tax on every booking. Auto-suspend on extended idle.
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 100
+    soft_limit = 80
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "20s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

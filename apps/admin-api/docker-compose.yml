@@ -4,7 +4,7 @@
 # per-client records the CLI does. In production this needs to be a
 # persistent volume — note in apps/ops/RUNBOOK.md.
 #
-# CAL_WEB_BASE points at the host's cal.diy (host.docker.internal:3000).
+# CAL_WEB_BASE points at the host's bookings@glnkco.com (host.docker.internal:3000).
 
 services:
   admin-api:
@@ -13,7 +13,7 @@ services:
       dockerfile: apps/admin-api/Dockerfile
     restart: unless-stopped
     environment:
-      # Container reaches cal.diy via host.docker.internal; the public URL
+      # Container reaches bookings@glnkco.com via host.docker.internal; the public URL
       # in booking links uses plain localhost so users can click them.
       CAL_WEB_BASE: ${CAL_WEB_BASE:-http://host.docker.internal:3000}
       CAL_PUBLIC_BASE: ${CAL_PUBLIC_BASE:-http://localhost:3000}

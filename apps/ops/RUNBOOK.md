@@ -7,16 +7,128 @@ Audience is engineering / ops, not clients.
 
 | Piece | Path | Port | Purpose |
 |---|---|---|---|
-| cal.diy | `cal.diy/` (vendored) | 3000 | The booking app. Self-hosted. |
-| receiver | `apps/receiver/` | 8000 | FastAPI; receives cal.diy webhooks, persists, fans out |
-| provisioning | `packages/provisioning` | (CLI) | Creates clients in cal.diy + writes the manifest |
-| fallback | `apps/fallback/` | (static) | Outage page; built ahead of time, served when cal.diy is down |
+| bookings@glnkco.com | `cal.diy/` (vendored) | 3000 | The booking app. Self-hosted. |
+| receiver | `apps/receiver/` | 8000 | FastAPI; receives bookings@glnkco.com webhooks, persists, fans out |
+| provisioning | `packages/provisioning` | (CLI) | Creates clients in bookings@glnkco.com + writes the manifest |
+| fallback | `apps/fallback/` | (static) | Outage page; built ahead of time, served when bookings@glnkco.com is down |
 | admin-api | `apps/admin-api/` | 8002 | FastAPI; thin HTTP wrapper around `provisioning` for the agency UI |
 | admin-ui | `apps/admin-ui/` | 3001 | Next.js; the agency director's no-terminal control panel |
 
+## Deploying to Fly.io
+
+bookings@glnkco.com itself is already at `https://glnk-booking.fly.dev` (config in
+`../cal.diy/fly.toml`). The four glink-booking services deploy as four
+separate Fly apps in the same org, region `iad`.
+
+| Fly app | Code | URL |
+|---|---|---|
+| `glnk-receiver` | `apps/receiver` | https://glnk-receiver.fly.dev |
+| `glnk-admin-api` | `apps/admin-api` | https://glnk-admin-api.fly.dev |
+| `glnk-admin-ui` | `apps/admin-ui` | https://glnk-admin-ui.fly.dev |
+| `glnk-fallback` | `apps/fallback` | https://glnk-fallback.fly.dev |
+| `glnk-receiver-db` | Fly Postgres | (attached to glnk-receiver) |
+
+### First-time setup (run once per environment)
+
+```bash
+# 0. Sanity: fly CLI logged in
+fly auth whoami
+
+# 1. Create the four apps (idempotent — re-running errors but does no harm)
+fly apps create glnk-receiver
+fly apps create glnk-admin-api
+fly apps create glnk-admin-ui
+fly apps create glnk-fallback
+
+# 2. Postgres for the receiver
+fly postgres create \
+  --name glnk-receiver-db \
+  --region iad \
+  --vm-size shared-cpu-1x \
+  --volume-size 1 \
+  --initial-cluster-size 1
+fly postgres attach glnk-receiver-db --app glnk-receiver
+# ^ writes DATABASE_URL into glnk-receiver's secrets.
+
+# 3. Persistent volume for admin-api (.data/ survives deploys)
+fly volumes create admin_data --app glnk-admin-api --region iad --size 1 --yes
+
+# 4. Secrets
+fly secrets set CAL_WEBHOOK_SECRET="$(openssl rand -hex 32)" --app glnk-receiver
+fly secrets set ADMIN_SESSION_SECRET="$(openssl rand -hex 32)" --app glnk-admin-api
+# Optional fan-out integrations on receiver (omit any you don't want):
+# fly secrets set SLACK_WEBHOOK_URL="..." HUBSPOT_TOKEN="..." \
+#                 RESEND_API_KEY="..." RESEND_FROM_EMAIL="..." \
+#                 AGENCY_NOTIFY_EMAIL="..." --app glnk-receiver
+
+# 5. Initial deploy
+bin/deploy-fly.sh        # builds + deploys all four
+
+# 6. Seed admin-api's volume with current .data/ (per-client records)
+#    Skip if you're starting clean.
+#    NOTE the COPYFILE_DISABLE=1 — without it, macOS tar emits `._foo.json`
+#    AppleDouble sidecars that match `*.json` globs on Linux and crash
+#    write_manifest. The deploy script exports this already; included here
+#    for the manual path.
+COPYFILE_DISABLE=1 tar czf /tmp/data.tgz -C . .data
+fly ssh sftp put /tmp/data.tgz /app/data.tgz --app glnk-admin-api
+fly ssh console --app glnk-admin-api \
+  -C "sh -c 'cd /app && tar xzf data.tgz && rm data.tgz && ls .data | head'"
+
+# 7. Re-register the platform webhook so it points at the deployed receiver.
+#    The old webhook (host.docker.internal:8000) doesn't work anymore.
+docker exec -i database psql -U unicorn_user -d calendso \
+  -c "DELETE FROM \"Webhook\" WHERE platform = true;"   # if it exists
+rm -f .data/platform_webhook.json
+export CAL_WEB_BASE=https://glnk-booking.fly.dev
+export RECEIVER_WEBHOOK_URL=https://glnk-receiver.fly.dev/webhook
+export CAL_WEBHOOK_SECRET="<value you used in step 4>"
+export CAL_ADMIN_EMAIL=<your bookings@glnkco.com admin email>
+export CAL_ADMIN_PASSWORD=<that user's password>
+uv run glink-provision bootstrap-webhook
+```
+
+> **Step 7 caveat** — that `docker exec` command targets a *local* cal.diy
+> database. The deployed cal.diy on Fly has its own database — talk to it
+> via `fly postgres connect --app <cal.diy-db-app>` and run the same DELETE.
+
+### Ongoing deploys
+
+```bash
+bin/deploy-fly.sh                    # all four
+bin/deploy-fly.sh admin-ui           # just one
+bin/deploy-fly.sh receiver admin-api # subset
+```
+
+The script handles each service's build-context quirks:
+- `receiver`, `admin-ui` build from their own dirs.
+- `admin-api` builds from monorepo root (Dockerfile pulls in `packages/*`).
+- `fallback` runs `npm run build` locally first (the build reads
+  `.data/clients.json`, which is gitignored AND `.dockerignore`d for safety),
+  then ships the prebuilt `out/` into an nginx image.
+
+### When `.data/` changes (new client provisioned)
+
+Two paths write to `.data/`:
+1. **Local CLI** (`uv run glink-provision single ...`) — writes to your
+   laptop's `.data/`. To get those records onto the deployed admin-api,
+   either re-run step 6 above, or re-do the provisioning from the admin-ui
+   (it writes straight to the volume).
+2. **admin-ui** (web form / CSV upload) — writes directly to the Fly
+   volume. No sync needed.
+
+After **any** provisioning that changes the client roster, redeploy the
+fallback so its prerendered pages match: `bin/deploy-fly.sh fallback`.
+
+### Cost note
+
+Roughly **$15–20/month** on top of cal.diy's existing spend (4 small
+machines, one tiny Postgres, one 1 GB volume). admin-ui and fallback
+auto-suspend when idle.
+
 ## One-time bootstrap
 
-After standing up cal.diy + the receiver, run this **once** per cal.diy
+After standing up bookings@glnkco.com + the receiver, run this **once** per bookings@glnkco.com
 instance to register the single global webhook that pipes every booking
 into the receiver:
 
@@ -24,7 +136,7 @@ into the receiver:
 export CAL_WEB_BASE=http://localhost:3000
 export RECEIVER_WEBHOOK_URL=http://host.docker.internal:8000/webhook
 export CAL_WEBHOOK_SECRET=<same value as apps/receiver/.env>
-export CAL_ADMIN_EMAIL=<your cal.diy system-admin email>
+export CAL_ADMIN_EMAIL=<your bookings@glnkco.com system-admin email>
 export CAL_ADMIN_PASSWORD=<that user's password>
 
 uv run glink-provision bootstrap-webhook
@@ -39,14 +151,14 @@ webhook covers them.
 
 Idempotent. Safe to re-run. Won't create duplicates.
 
-> **How idempotency works** — cal.diy's `webhook.list` route returns `[]`
+> **How idempotency works** — bookings@glnkco.com's `webhook.list` route returns `[]`
 > for admins even when platform webhooks exist (verified live), so the
 > usual "list, match by URL, skip" pattern doesn't work here. The
 > bootstrap CLI instead writes a state record to
 > `.data/platform_webhook.json` after creating the webhook. Re-runs
 > short-circuit on that file.
 >
-> If you ever delete the platform webhook in cal.diy out of band (e.g.
+> If you ever delete the platform webhook in bookings@glnkco.com out of band (e.g.
 > via SQL during a reset) — also delete `.data/platform_webhook.json`
 > before re-running the bootstrap, otherwise the CLI will think it
 > already exists and skip.
@@ -60,7 +172,7 @@ every event type, in addition to the receiver email, for redundancy.
 
 **Status: not implemented. Not reachable.**
 
-cal.diy stripped the Workflows feature, and "send email to additional
+bookings@glnkco.com stripped the Workflows feature, and "send email to additional
 recipients" was a Workflows action — it doesn't exist as a standalone
 event-type field in this build. Confirmed by source:
 
@@ -80,9 +192,9 @@ If we ever want a *second* path (true redundancy), options:
 
 1. Add a second target to the receiver's fan-out (already trivial — the
    `dispatch_external` orchestrator runs all targets concurrently).
-2. Patch cal.diy to surface an `additionalEmails` field. Possible but
+2. Patch bookings@glnkco.com to surface an `additionalEmails` field. Possible but
    would mean either reviving the Workflows package or writing a small
-   custom field — both violate the "do not edit cal.diy code" rule.
+   custom field — both violate the "do not edit bookings@glnkco.com code" rule.
 
 ### Webhook scope — global platform, not per-client
 
@@ -91,7 +203,7 @@ provisioning. That worked but was N+1 (one webhook per client, all
 pointing at the same receiver URL).
 
 We switched to **one platform webhook** registered once via
-`bootstrap-webhook` (above). Same coverage, one row in cal.diy's
+`bootstrap-webhook` (above). Same coverage, one row in bookings@glnkco.com's
 `Webhook` table, simpler operation.
 
 Pre-existing per-user webhooks for clients provisioned before the switch
@@ -172,11 +284,11 @@ on startup so you can confirm.
 1. Generate a new secret: `openssl rand -hex 32`.
 2. Update `apps/receiver/.env` `CAL_WEBHOOK_SECRET=<new>`.
 3. Restart receiver: `docker compose -f apps/receiver/docker-compose.yml up -d --force-recreate receiver`.
-4. Re-run `glink-provision bootstrap-webhook` — `ensure_platform_webhook` will detect the existing webhook by URL and *not* recreate it. To actually rotate the secret in cal.diy, the simplest path is to delete the platform webhook row (`DELETE FROM "Webhook" WHERE platform = true`) and re-run the bootstrap. cal.diy itself doesn't expose a "rotate secret" mutation we can call from outside.
+4. Re-run `glink-provision bootstrap-webhook` — `ensure_platform_webhook` will detect the existing webhook by URL and *not* recreate it. To actually rotate the secret in bookings@glnkco.com, the simplest path is to delete the platform webhook row (`DELETE FROM "Webhook" WHERE platform = true`) and re-run the bootstrap. bookings@glnkco.com itself doesn't expose a "rotate secret" mutation we can call from outside.
 
-### Resetting the local cal.diy stack
+### Resetting the local bookings@glnkco.com stack
 
-Wipes everything (cal.diy users, schedules, event types, webhooks) and
+Wipes everything (bookings@glnkco.com users, schedules, event types, webhooks) and
 rebuilds from migrations:
 
 ```bash
@@ -193,13 +305,13 @@ uv run glink-provision bootstrap-webhook
 
 ### Handing the admin UI to a new operator (e.g. Alex)
 
-The admin UI (`apps/admin-ui`, port 3001) authenticates against cal.diy.
+The admin UI (`apps/admin-ui`, port 3001) authenticates against bookings@glnkco.com.
 For someone to log in they need **two** things:
 
-1. A cal.diy user account (any sign-up flow works).
-2. That user's `role` set to `ADMIN` in cal.diy's `users` table.
+1. A bookings@glnkco.com user account (any sign-up flow works).
+2. That user's `role` set to `ADMIN` in bookings@glnkco.com's `users` table.
 
-cal.diy doesn't expose role promotion in its UI, so do it in SQL:
+bookings@glnkco.com doesn't expose role promotion in its UI, so do it in SQL:
 
 ```bash
 docker exec -i database psql -U unicorn_user -d calendso \
@@ -208,17 +320,17 @@ docker exec -i database psql -U unicorn_user -d calendso \
 
 After that, `https://<admin-ui-host>:3001/login` accepts those credentials.
 
-> **Note on `INACTIVE_ADMIN`** — cal.diy reports a user's effective role
+> **Note on `INACTIVE_ADMIN`** — bookings@glnkco.com reports a user's effective role
 > as `INACTIVE_ADMIN` when they have `role = ADMIN` but haven't enabled
 > 2FA. The admin-api treats both `ADMIN` and `INACTIVE_ADMIN` as admin,
 > so the user can sign in and work without 2FA. Encourage 2FA anyway —
-> the role downgrade is cal.diy's nudge, not ours.
+> the role downgrade is bookings@glnkco.com's nudge, not ours.
 
 > **Per-client passwords are read from `.data/<email>.json`**. If you
-> blow that directory away (see "Resetting the local cal.diy stack") the
+> blow that directory away (see "Resetting the local bookings@glnkco.com stack") the
 > admin UI's "Reveal" / "Copy password" buttons will stop showing the
 > first-login password for old clients. The password still exists in
-> cal.diy's DB; it's just no longer recoverable from disk. Fresh
+> bookings@glnkco.com's DB; it's just no longer recoverable from disk. Fresh
 > provisions through the UI write the file back.
 
 > **`.data` must be a persistent volume in production.** The compose

@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS bookings (
     custom_responses_json    JSONB,
     raw_payload_json         JSONB       NOT NULL,
     received_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    -- Dedup retries from cal.diy: same booking + same trigger = same notification.
+    -- Dedup retries from bookings@glnkco.com: same booking + same trigger = same notification.
     UNIQUE (cal_booking_uid, event_type)
 );
 

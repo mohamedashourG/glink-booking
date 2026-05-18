@@ -1,23 +1,23 @@
-# receiver — cal.diy webhook receiver
+# receiver — bookings@glnkco.com webhook receiver
 
-Durability layer that captures every cal.diy booking event into its own
+Durability layer that captures every bookings@glnkco.com booking event into its own
 Postgres, then fans out to Slack / HubSpot / Resend / Google Sheets.
 
 The receiver:
 
-- accepts `POST /webhook` from cal.diy
+- accepts `POST /webhook` from bookings@glnkco.com
 - verifies `X-Cal-Signature-256` (HMAC-SHA256 over the raw body, hex-encoded)
 - persists one row per delivery into its own Postgres
 - treats the DB write as the source of truth — failures return non-2xx so
-  cal.diy retries
+  bookings@glnkco.com retries
 - handles `BOOKING_CREATED`, `BOOKING_RESCHEDULED`, `BOOKING_CANCELLED`,
   `BOOKING_REJECTED`; unknown trigger types are a 200-OK no-op
 - dedupes retries via a `UNIQUE (cal_booking_uid, event_type)` constraint
 - exposes a `/health` endpoint
 
 Non-goals (deliberate):
-- the receiver never calls cal.diy
-- the receiver never writes into cal.diy's database
+- the receiver never calls bookings@glnkco.com
+- the receiver never writes into bookings@glnkco.com's database
 
 ## Fan-out: Slack / HubSpot / Resend / Google Sheets
 
@@ -25,11 +25,11 @@ After the DB row is committed and the 2xx returned, four best-effort
 integrations fire in a background task ([`fanout.py`](src/receiver/fanout.py)).
 They run **concurrently** so a slow one doesn't block the others.
 
-- They fire **only on newly-stored rows** — a cal.diy retry (deduped by
+- They fire **only on newly-stored rows** — a bookings@glnkco.com retry (deduped by
   the UNIQUE constraint) does NOT re-post to Slack/HubSpot/Resend/Sheets.
 - Each integration is independent. A failure or hang in one is logged
   and contained; it never affects the others, the DB row, or the
-  response cal.diy already received.
+  response bookings@glnkco.com already received.
 - Each reads its own env vars. Unset = silently skipped at startup
   ("not configured"). The receiver runs cleanly with zero through all
   four configured.
@@ -42,7 +42,7 @@ They run **concurrently** so a slow one doesn't block the others.
 
 | Var                    | Required for       | Notes |
 |------------------------|--------------------|-------|
-| `CAL_WEBHOOK_SECRET`   | the receiver       | must match the secret on the cal.diy webhook subscription |
+| `CAL_WEBHOOK_SECRET`   | the receiver       | must match the secret on the bookings@glnkco.com webhook subscription |
 | `DATABASE_URL`         | the receiver       | set by docker-compose; points at the bundled Postgres |
 | `SLACK_WEBHOOK_URL`    | Slack integration  | incoming-webhook URL from your Slack app config |
 | `HUBSPOT_TOKEN`        | HubSpot integration | private-app access token |
@@ -58,7 +58,7 @@ docker-compose file passes them through to the container.
 ## Local bring-up
 
 The receiver runs as its own Compose project (it doesn't share a network
-with cal.diy — cal.diy reaches it via `host.docker.internal:8000`).
+with bookings@glnkco.com — bookings@glnkco.com reaches it via `host.docker.internal:8000`).
 
 ```bash
 cd apps/receiver
@@ -75,14 +75,14 @@ curl -fsS http://localhost:8000/health     # → {"status":"ok"}
 
 The `CAL_WEBHOOK_SECRET` you generate here must match the
 `CAL_WEBHOOK_SECRET` env var you give the provisioning CLI — it's the
-shared secret cal.diy signs each delivery with and the receiver verifies
-against. After the receiver is up, run **once** per cal.diy instance:
+shared secret bookings@glnkco.com signs each delivery with and the receiver verifies
+against. After the receiver is up, run **once** per bookings@glnkco.com instance:
 
 ```bash
 uv run --project ../.. glink-provision bootstrap-webhook
 ```
 
-That registers cal.diy's single global "platform" webhook against this
+That registers bookings@glnkco.com's single global "platform" webhook against this
 receiver URL — `http://host.docker.internal:8000/webhook` — and from
 then on every booking on every client lands here automatically. See the
 [operator runbook](../ops/RUNBOOK.md) for the full bootstrap env list

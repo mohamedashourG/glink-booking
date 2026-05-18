@@ -1,20 +1,20 @@
 """Admin-side helpers run OUTSIDE the per-client provisioning loop.
 
 Today the only thing in here is the one-time platform-webhook bootstrap —
-the single global webhook that fires for every cal.diy booking across
+the single global webhook that fires for every bookings@glnkco.com booking across
 every client. Provisioning no longer registers per-user webhooks; instead
-this command is run once after the cal.diy instance is stood up.
+this command is run once after the bookings@glnkco.com instance is stood up.
 
 Admin credentials come from env: CAL_ADMIN_EMAIL + CAL_ADMIN_PASSWORD.
-The admin must already exist in cal.diy (it's the system-admin user
-created during the cal.diy setup wizard).
+The admin must already exist in bookings@glnkco.com (it's the system-admin user
+created during the bookings@glnkco.com setup wizard).
 
-Idempotency note: cal.diy's `webhook.list` tRPC route returns `[]` for
+Idempotency note: bookings@glnkco.com's `webhook.list` tRPC route returns `[]` for
 admins even when platform webhooks exist (verified live). So we can't
 "list, match by URL, skip if exists" the way we do for per-user webhooks.
 Instead we record the platform webhook id in a local state file under
 `.data/platform_webhook.json` after creating it, and re-runs short-
-circuit on that. Side effect: if the webhook is deleted in cal.diy out
+circuit on that. Side effect: if the webhook is deleted in bookings@glnkco.com out
 of band, the local file thinks it still exists — the runbook documents
 how to recover (delete the local file, re-run).
 """
@@ -52,7 +52,7 @@ def load_admin_creds() -> AdminCreds:
         raise SystemExit(
             "bootstrap-webhook needs admin credentials. Missing: "
             + ", ".join(missing)
-            + ". This is the cal.diy system-admin user (role=ADMIN), not a client."
+            + ". This is the bookings@glnkco.com system-admin user (role=ADMIN), not a client."
         )
     return AdminCreds(email=email, password=password)  # type: ignore[arg-type]
 
@@ -92,7 +92,7 @@ def bootstrap_platform_webhook(
 
     Idempotency lives in `.data/platform_webhook.json`. If a state record
     matches the current `subscriber_url`, we trust it and return without
-    calling cal.diy. If the URL changed (or there's no state), we create
+    calling bookings@glnkco.com. If the URL changed (or there's no state), we create
     a fresh platform webhook and persist its id.
     """
     existing = _read_state(store_dir)

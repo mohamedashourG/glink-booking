@@ -1,0 +1,48 @@
+# Fly.io config — glink-booking admin-ui (Next.js control panel).
+# Deploy from this directory: `flyctl deploy`.
+#
+# admin-ui never reads anything on its own — every API call hits admin-api
+# server-side. Browser only ever talks to admin-ui's own origin, so:
+#   - ADMIN_API_BASE is a *server* env var (internal Next.js fetch target).
+#   - NEXT_PUBLIC_* is not needed for it; nothing is exposed to the browser.
+#
+# The session cookie (glink_admin_ui_session) is set by the loginAction with
+# `secure: NODE_ENV==="production"` — which is true on Fly — so it requires
+# HTTPS, which `force_https = true` below enforces.
+
+app = "glnk-admin-ui"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  NEXT_TELEMETRY_DISABLED = "1"
+  ADMIN_API_BASE = "https://glnk-admin-api.fly.dev"
+  ADMIN_UI_COOKIE_NAME = "glink_admin_ui_session"
+  # Public URL of bookings@glnkco.com — used to render booking links in the
+  # dashboard's client table. Without this, app/page.tsx falls back to
+  # http://localhost:3000 and the rendered links are broken in prod.
+  CAL_PUBLIC_BASE = "https://glnk-booking.fly.dev"
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  # admin-ui is internal-use-only and lightly trafficked. Aggressive suspend
+  # is fine — the operator can tolerate a cold start on the next login.
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "30s"
+    method = "GET"
+    path = "/login"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

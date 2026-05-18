@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Settings:
-    cal_web_base: str  # how WE connect to cal.diy (e.g. http://localhost:3000 or http://host.docker.internal:3000)
+    cal_web_base: str  # how WE connect to bookings@glnkco.com (e.g. http://localhost:3000 or http://host.docker.internal:3000)
     cal_public_base: str  # what URL goes into booking links shown to humans (e.g. http://localhost:3000)
 
 

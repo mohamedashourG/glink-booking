@@ -15,7 +15,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <div className="card card-pad shadow-pop">
           <h1 className="text-xl font-semibold text-ink-900 text-center">Welcome back</h1>
           <p className="text-sm text-ink-500 mt-1 text-center">
-            Sign in with your cal.diy admin account.
+            Sign in with your bookings@glnkco.com admin account.
           </p>
           <div className="mt-6">
             <LoginForm next={next ?? "/"} />
@@ -23,7 +23,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         </div>
 
         <p className="mt-6 text-center text-xs text-ink-500">
-          Trouble signing in? Your account needs <span className="chip-mono">role=ADMIN</span> on cal.diy.
+          Trouble signing in? Your account needs <span className="chip-mono">role=ADMIN</span> on bookings@glnkco.com.
         </p>
       </div>
     </main>

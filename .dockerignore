@@ -1,0 +1,34 @@
+# Keep build contexts small and prevent leaking sensitive files into images.
+# This is used by ALL `fly deploy` runs, especially admin-api which builds from
+# the monorepo root and would otherwise see .data/ (per-client passwords).
+
+# Sensitive — per-client records and webhook bootstrap state
+.data/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.python-version
+.uv/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+next-env.d.ts
+
+# Editor + OS noise
+.git/
+.github/
+.vscode/
+.idea/
+.DS_Store
+
+# Env
+.env
+.env.local
+
+# Fly state
+fly.toml.bak

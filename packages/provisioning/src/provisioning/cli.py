@@ -16,15 +16,15 @@ from provisioning.settings import load_webhook_settings
 
 def _add_client_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--name", required=True, help="Client full name")
-    p.add_argument("--email", required=True, help="Client email (used to log into cal.diy)")
-    p.add_argument("--slug", required=True, help="cal.diy username, also part of the booking URL")
+    p.add_argument("--email", required=True, help="Client email (used to log into bookings@glnkco.com)")
+    p.add_argument("--slug", required=True, help="bookings@glnkco.com username, also part of the booking URL")
     p.add_argument("--tz", default="America/New_York", help="IANA timezone, default America/New_York")
     p.add_argument("--work-start", default="09:00", help="HH:MM in client tz, default 09:00")
     p.add_argument("--work-end", default="18:00", help="HH:MM in client tz, default 18:00")
     p.add_argument(
         "--calendly-url",
         default=None,
-        help="Optional fallback Calendly URL the outage page embeds when cal.diy is down",
+        help="Optional fallback Calendly URL the outage page embeds when bookings@glnkco.com is down",
     )
 
 
@@ -91,14 +91,14 @@ def _run_one(client: Client, *, settings) -> ProvisionResult | None:
 def _cmd_bootstrap_webhook(settings) -> int:
     """Idempotently register THE single platform webhook against the receiver.
 
-    Run this ONCE per cal.diy instance — provisioning no longer registers
+    Run this ONCE per bookings@glnkco.com instance — provisioning no longer registers
     per-client webhooks because the platform webhook fires for every booking
-    across every user (see cal.diy WebhookRepository.getSubscribersRaw,
+    across every user (see bookings@glnkco.com WebhookRepository.getSubscribersRaw,
     priority-1 union branch).
     """
     webhook = load_webhook_settings()
     admin = load_admin_creds()
-    print(f"cal.diy web base: {settings.cal_web_base}")
+    print(f"bookings@glnkco.com web base: {settings.cal_web_base}")
     print(f"webhook receiver: {webhook.receiver_url}")
     print(f"admin login    : {admin.email}")
     webhook_id, created = bootstrap_platform_webhook(
@@ -132,7 +132,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "bootstrap-webhook":
         return _cmd_bootstrap_webhook(settings)
 
-    print(f"cal.diy web base: {settings.cal_web_base}")
+    print(f"bookings@glnkco.com web base: {settings.cal_web_base}")
 
     if args.cmd == "single":
         result = _run_one(_client_from_args(args), settings=settings)

@@ -1,6 +1,6 @@
 # glink-booking
 
-Booking system built **around** a self-hosted cal.diy instance. cal.diy itself
+Booking system built **around** a self-hosted bookings@glnkco.com instance. bookings@glnkco.com itself
 lives in a sibling directory (`../cal.diy`) — this repo never edits its code.
 
 ## Layout
@@ -12,7 +12,7 @@ glink-booking/
 │   │   └── src/cal_client/
 │   │       ├── config.py               # env-driven config (CAL_WEB_BASE)
 │   │       ├── models.py               # plain data classes
-│   │       └── cal_web.py              # ⚠️ cal.diy web/session internals
+│   │       └── cal_web.py              # ⚠️ bookings@glnkco.com web/session internals
 │   └── provisioning/                   # CLI built on top of cal-client
 │       └── src/provisioning/
 │           ├── cli.py
@@ -29,13 +29,13 @@ This is a [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/
 
 ## Why two packages
 
-`cal-client` carries everything that knows how to *talk to cal.diy*. The
+`cal-client` carries everything that knows how to *talk to bookings@glnkco.com*. The
 provisioning CLI and (eventually) the FastAPI receiver both depend on it
-— so the cal.diy details live in one place.
+— so the bookings@glnkco.com details live in one place.
 
 Inside `cal-client`, the **`cal_web` module is quarantined**. It uses
-cal.diy's web routes (signup, NextAuth login, mounted tRPC procedures)
-because in this build of cal.diy, API v2 doesn't expose the operations
+bookings@glnkco.com's web routes (signup, NextAuth login, mounted tRPC procedures)
+because in this build of bookings@glnkco.com, API v2 doesn't expose the operations
 we need (user creation, per-user API key bootstrap). Anything that talks
 to API v2 should go in a *separate* module — never reach into `cal_web`
 from outside the provisioning package.
@@ -48,7 +48,7 @@ uv sync                  # creates .venv, installs both packages editable
 
 ## Provisioning
 
-The provisioning CLI gives one cal.diy login per client, configured with
+The provisioning CLI gives one bookings@glnkco.com login per client, configured with
 our standard policy:
 
 - one 30-minute event type
@@ -69,14 +69,14 @@ export CAL_WEB_BASE=http://localhost:3000
 ```
 
 Webhook delivery is set up **once** via the `bootstrap-webhook`
-subcommand, which registers a single global cal.diy "platform" webhook
+subcommand, which registers a single global bookings@glnkco.com "platform" webhook
 that fires for every booking across every client (replaces the
 per-client webhook registration we used to do here):
 
 ```bash
 export RECEIVER_WEBHOOK_URL=http://host.docker.internal:8000/webhook
 export CAL_WEBHOOK_SECRET=<same value as apps/receiver/.env>
-export CAL_ADMIN_EMAIL=<your cal.diy system-admin email>
+export CAL_ADMIN_EMAIL=<your bookings@glnkco.com system-admin email>
 export CAL_ADMIN_PASSWORD=<that user's password>
 
 uv run glink-provision bootstrap-webhook   # idempotent, run once per instance
@@ -94,7 +94,7 @@ uv run glink-provision single \
     --tz America/New_York
 ```
 
-Single client with a fallback Calendly URL (used by the outage-fallback page when cal.diy is down):
+Single client with a fallback Calendly URL (used by the outage-fallback page when bookings@glnkco.com is down):
 
 ```bash
 uv run glink-provision single \
@@ -110,7 +110,7 @@ optionally `timezone, work_start, work_end`):
 uv run glink-provision batch ./clients.csv
 ```
 
-Per-client records (including the generated password and the cal.diy IDs
+Per-client records (including the generated password and the bookings@glnkco.com IDs
 needed for idempotent re-runs) are written to `./.data/<email>.json`,
 mode `0600`. The `.data/` directory is gitignored — **treat its contents
 as secrets**.

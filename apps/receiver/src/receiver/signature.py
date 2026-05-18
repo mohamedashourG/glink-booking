@@ -1,11 +1,11 @@
-"""HMAC-SHA256 verification for cal.diy webhooks.
+"""HMAC-SHA256 verification for bookings@glnkco.com webhooks.
 
-cal.diy computes the signature as:
+bookings@glnkco.com computes the signature as:
 
     hex(HMAC-SHA256(secret, raw_request_body))
 
 and sends it in the `X-Cal-Signature-256` header (see
-packages/features/webhooks/lib/sendPayload.ts in the cal.diy source).
+packages/features/webhooks/lib/sendPayload.ts in the bookings@glnkco.com source).
 
 The signature must be computed against the EXACT raw bytes of the request
 body — never a re-serialized JSON object — because any change in
