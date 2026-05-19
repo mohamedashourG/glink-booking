@@ -1,7 +1,34 @@
 "use server";
 
-import { adminApi, type ApiError, type ProvisionResponse, type BatchResultRow } from "@/lib/api";
+import {
+  adminApi,
+  type ApiError,
+  type BatchResultRow,
+  type ProvisionResponse,
+  type SlugCheck,
+} from "@/lib/api";
 import { getSessionToken } from "@/lib/server-session";
+
+export type SlugCheckResult =
+  | { ok: true; data: SlugCheck }
+  | { ok: false; error: string };
+
+/** Server action used by NewClientForm for inline live slug checking.
+ *  Wraps the admin-api /slug-available endpoint so we can read the session
+ *  cookie server-side; the client form never touches the JWT directly. */
+export async function checkSlugAction(slug: string): Promise<SlugCheckResult> {
+  const trimmed = slug.trim();
+  if (!trimmed) return { ok: false, error: "empty" };
+  const token = await getSessionToken();
+  if (!token) return { ok: false, error: "not-authenticated" };
+  try {
+    const data = await adminApi.checkSlug(trimmed, token);
+    return { ok: true, data };
+  } catch (err) {
+    const e = err as ApiError;
+    return { ok: false, error: `HTTP ${e.status}` };
+  }
+}
 
 export type SingleResult =
   | { ok: true; data: ProvisionResponse }

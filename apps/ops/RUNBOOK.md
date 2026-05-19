@@ -126,6 +126,159 @@ Roughly **$15–20/month** on top of cal.diy's existing spend (4 small
 machines, one tiny Postgres, one 1 GB volume). admin-ui and fallback
 auto-suspend when idle.
 
+### Optional: live data sources for admin-api
+
+admin-api can augment its responses with two **read-only** Postgres
+lookups. Both are optional — admin-api degrades gracefully when either
+env var is unset (the dashboard still works against the manifest, just
+without live usernames or booking counts).
+
+| Env var on `glnk-admin-api` | DB it reads | What it powers |
+|---|---|---|
+| `CAL_DB_URL` | `glnk-booking-db.glnk_booking` | live `users.username` lookups (drift detection on the dashboard, live `/slug-available` check on the new-client form) |
+| `RECEIVER_DB_URL` | `glnk-receiver-db.glnk_receiver` | per-client booking counts, status breakdown, recent-meetings list on detail pages |
+
+**Connection string format** (Fly internal — uses the flycast private IP):
+
+```
+postgres://<user>:<password>@<cluster>.flycast:5432/<db>?sslmode=disable
+```
+
+The flycast hostname is reachable from any app in the same Fly org —
+no proxy needed.
+
+**Two ways to provide credentials** (pick one):
+
+**A. Reuse the existing app DB users (simplest).** Each Fly Postgres
+attach creates an app-scoped user with full access to its database.
+admin-api will only issue SELECTs, but the credential itself is
+write-capable.
+
+```bash
+# Pull the DATABASE_URL secret value from each app, set as a NEW secret on admin-api.
+# Fly does not expose secret values, so this requires fly ssh into each app:
+
+fly ssh console --app glnk-booking -C 'printenv DATABASE_URL'  # then copy
+fly secrets set CAL_DB_URL="<paste>" --app glnk-admin-api
+
+fly ssh console --app glnk-receiver -C 'printenv DATABASE_URL'
+fly secrets set RECEIVER_DB_URL="<paste>" --app glnk-admin-api
+```
+
+**B. Create dedicated read-only roles (best practice).** Limits blast
+radius if the admin-api credential ever leaks.
+
+```bash
+# cal.diy DB
+fly ssh console --app glnk-booking-db -C \
+  'psql -U postgres -p 5433 -h /run/postgresql -d glnk_booking -c "
+    CREATE USER glnk_admin_ro WITH PASSWORD '\''<random>'\'';
+    GRANT CONNECT ON DATABASE glnk_booking TO glnk_admin_ro;
+    GRANT USAGE ON SCHEMA public TO glnk_admin_ro;
+    GRANT SELECT ON ALL TABLES IN SCHEMA public TO glnk_admin_ro;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO glnk_admin_ro;
+  "'
+fly secrets set \
+  CAL_DB_URL="postgres://glnk_admin_ro:<random>@glnk-booking-db.flycast:5432/glnk_booking?sslmode=disable" \
+  --app glnk-admin-api
+
+# receiver DB — same pattern with the glnk_receiver database.
+```
+
+After setting either set of secrets, `fly deploy --config apps/admin-api/fly.toml .`
+to roll the machine. The startup log line will end with
+`cal_db=on receiver_db=on` when both pools opened cleanly.
+
+## Pre-meeting reminders
+
+Receiver schedules + sends reminder emails before each booking. One row in
+`reminder_jobs` per (offset × recipient); a polling worker in the
+receiver process claims due rows with `FOR UPDATE SKIP LOCKED` and sends
+via the same Resend account fan-out already uses.
+
+### Env vars (receiver)
+
+| Var | Default | Effect |
+|---|---|---|
+| `REMINDER_OFFSETS_MIN` | `60` | CSV minutes-before-meeting. `1440,60,15` = 1 day + 1 hour + 15 min reminders. Empty disables global default. |
+| `REMINDER_RECIPIENTS` | `prospect,host,agency` | Subset of {prospect,host,agency}. Empty disables global default. |
+| `REMINDER_TICK_SECONDS` | `30` | Worker poll interval. Floor of 5s. |
+
+`RESEND_API_KEY` / `RESEND_FROM_EMAIL` are shared with the existing email
+fan-out — no new key. `AGENCY_NOTIFY_EMAIL` doubles as the agency
+reminder recipient.
+
+### Per-client overrides
+
+The admin-ui detail page has a Reminders card. Saving there writes to
+`client_reminder_config` (receiver-DB) — admin-api needs the same
+`RECEIVER_DB_URL` it already has for live booking counts, but with INSERT/
+UPDATE permission on this table. If you used the recommended read-only
+role from the "Optional: live data sources" section, grant it the extra
+permission:
+
+```sql
+GRANT INSERT, UPDATE ON client_reminder_config TO glnk_admin_ro;
+```
+
+(Re-using the existing app DB user, no action needed — it already has
+full access.)
+
+Newly-provisioned clients get a seeded default config: `offsets_min=[60]`,
+`recipients=[prospect,host,agency]`. Visible immediately in admin-ui.
+
+### Behavior nuances worth knowing
+
+- **Existing pending rows are not retroactively rewritten** when the
+  config changes. Already-scheduled reminders fire on their original
+  schedule; only *new* bookings see the new config.
+- **Reschedules** cancel pending rows under the old uid and create fresh
+  rows under the new uid. Past-the-window offsets (e.g. 1 hour notice on
+  a meeting now 30 min away) are silently dropped.
+- **Cancels / rejects** flip all pending rows for the uid to `cancelled`.
+  Sent/failed rows are untouched (history).
+- **Concurrent workers**: production receiver runs 2 machines for HA;
+  both poll. `FOR UPDATE SKIP LOCKED` ensures each row is sent once.
+- **Worker crash mid-send**: rows stuck in `processing` for >5 min are
+  reverted to `pending` on the next tick. Mid-send durability is
+  Resend's responsibility — we may double-send in the rarest case where
+  Resend accepted the call but we lost the connection before marking
+  sent. Logged as `transient failure`.
+
+### Disabling
+
+Per-client: edit the Reminders card, save with empty offsets OR empty
+recipients. Either alone disables for that client.
+
+Globally: `fly secrets unset REMINDER_OFFSETS_MIN --app glnk-receiver`
+(or set to empty string). Existing per-client overrides still apply.
+
+To fully kill the feature: drop the receiver tables (`reminder_jobs`,
+`client_reminder_config`). The bookings table's `host_email` column is
+harmless to keep around.
+
+### Troubleshooting
+
+```bash
+# Are jobs being scheduled? Should see numbers next to 'pending' after a booking.
+fly ssh console --app glnk-receiver-db -C \
+  'psql -U postgres -p 5433 -h /run/postgresql -d glnk_receiver \
+   -c "SELECT status, COUNT(*) FROM reminder_jobs GROUP BY status;"'
+
+# Tail worker activity (sent / failed / retried)
+fly logs --app glnk-receiver | grep -E "reminder"
+
+# A specific booking's reminder rows
+fly ssh console --app glnk-receiver-db -C \
+  'psql -U postgres -p 5433 -h /run/postgresql -d glnk_receiver \
+   -c "SELECT * FROM reminder_jobs WHERE cal_booking_uid=$$<uid>$$;"'
+```
+
+A "no scheduled_at" log line means the webhook payload didn't carry a
+meeting time — scheduling is skipped for that row. Inspect
+`raw_payload_json` to see why; cal.diy may have changed its envelope
+shape in an upgrade.
+
 ## One-time bootstrap
 
 After standing up bookings@glnkco.com + the receiver, run this **once** per bookings@glnkco.com

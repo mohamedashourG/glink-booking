@@ -5,6 +5,14 @@
 # persistent volume — note in apps/ops/RUNBOOK.md.
 #
 # CAL_WEB_BASE points at the host's bookings@glnkco.com (host.docker.internal:3000).
+#
+# Networks: admin-api joins TWO external networks so it can read live
+# data directly from the other stacks' Postgres containers:
+#   - stack             (cal.diy compose) → host `database`
+#   - receiver_default  (receiver compose) → host `postgres`
+# Both networks are created by their respective compose-up runs; bring
+# those up FIRST or this compose will fail to attach. The
+# CAL_DB_URL / RECEIVER_DB_URL targets use those in-network hostnames.
 
 services:
   admin-api:
@@ -23,7 +31,30 @@ services:
       ADMIN_COOKIE_DOMAIN: ${ADMIN_COOKIE_DOMAIN:-}
       ADMIN_COOKIE_SECURE: ${ADMIN_COOKIE_SECURE:-false}
       STORE_DIR: /app/.data
+      # Live data sources (optional). When unset, dashboard works against
+      # the manifest only — no live usernames, no booking counts.
+      CAL_DB_URL: ${CAL_DB_URL:-postgresql://unicorn_user:magical_password@database:5432/calendso}
+      RECEIVER_DB_URL: ${RECEIVER_DB_URL:-postgresql://receiver:receiver@postgres:5432/receiver}
+      # Client portal: cal.diy mints short-lived JWTs with this same secret
+      # and embeds an iframe pointing at admin-ui/portal/embed. admin-api
+      # verifies the JWT here and issues a session token for the iframe.
+      # Unset → /portal/exchange returns 503; rest of admin-api still works.
+      PORTAL_JWT_SECRET: ${PORTAL_JWT_SECRET:-}
+      PORTAL_SESSION_TTL_SECONDS: ${PORTAL_SESSION_TTL_SECONDS:-1800}
     volumes:
       - ../../.data:/app/.data
     ports:
       - "8002:8002"
+    networks:
+      - default
+      - cal_stack
+      - receiver_net
+
+networks:
+  default:
+  cal_stack:
+    name: stack
+    external: true
+  receiver_net:
+    name: receiver_default
+    external: true

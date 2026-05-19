@@ -16,6 +16,16 @@ class Settings:
     store_dir: Path
     cookie_domain: str | None
     cookie_secure: bool
+    # Read-only Postgres connection strings for "live data" features.
+    # Optional: when unset, /clients still works against the manifest but
+    # without live usernames or booking counts. Set both for full features.
+    cal_db_url: str | None        # cal.diy (glnk_booking) — for live usernames
+    receiver_db_url: str | None   # receiver (glnk_receiver) — for bookings
+    # Shared HMAC secret used to verify portal JWTs minted by cal.diy
+    # (Path B / iframe client portal). When unset, the /portal/exchange
+    # endpoint returns 503 — the rest of admin-api still works.
+    portal_jwt_secret: str | None
+    portal_session_ttl_seconds: int  # how long the exchanged session is good for
 
 
 def load_settings() -> Settings:
@@ -31,4 +41,8 @@ def load_settings() -> Settings:
         store_dir=Path(os.environ.get("STORE_DIR", "/app/.data")),
         cookie_domain=os.environ.get("ADMIN_COOKIE_DOMAIN") or None,
         cookie_secure=os.environ.get("ADMIN_COOKIE_SECURE", "false").lower() == "true",
+        cal_db_url=os.environ.get("CAL_DB_URL") or None,
+        receiver_db_url=os.environ.get("RECEIVER_DB_URL") or None,
+        portal_jwt_secret=os.environ.get("PORTAL_JWT_SECRET") or None,
+        portal_session_ttl_seconds=int(os.environ.get("PORTAL_SESSION_TTL_SECONDS", "1800")),  # 30 min
     )

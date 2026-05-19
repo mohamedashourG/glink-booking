@@ -38,6 +38,13 @@ class ExtractedBooking:
     # the original booking's uid into `payload.rescheduleUid`. Integrations
     # that track lifecycle by uid (e.g. HubSpot meeting reuse) need this.
     previous_uid: str | None = None
+    # Pulled from `payload.organizer.email`. Used by the reminders feature
+    # to email the cal.diy host (the meeting owner, not the prospect) at
+    # send time. None means we couldn't find one — receiver will still
+    # store the booking, the host reminder just gets skipped for that row.
+    host_email: str | None = None
+    # Names used in reminder copy ("meeting with <host_name>").
+    host_name: str | None = None
 
 
 def _str(node: Any) -> str | None:
@@ -148,4 +155,6 @@ def extract(envelope: dict) -> ExtractedBooking:
         utm=_utm(payload),
         custom_responses=payload.get("responses") or {},
         previous_uid=_str(payload.get("rescheduleUid")),
+        host_email=_str(organizer.get("email")),
+        host_name=_str(organizer.get("name")) or _str(organizer.get("username")),
     )

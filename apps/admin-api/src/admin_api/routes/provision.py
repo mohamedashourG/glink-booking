@@ -9,10 +9,17 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel, EmailStr, Field
 
+from admin_api import reminders as reminders_mod
 from admin_api.auth_dep import require_admin
 from cal_client import Client, load_settings as load_cal_settings
 from provisioning import store
 from provisioning.provision import ProvisionError, provision_client
+
+# Default per-client reminder policy applied at first provision. Matches
+# the operator answers in the design phase: 1h before, all recipients on.
+# Operators can edit later via PUT /clients/<slug>/reminders.
+_DEFAULT_OFFSETS = [60]
+_DEFAULT_RECIPIENTS = ["prospect", "host", "agency"]
 
 log = logging.getLogger(__name__)
 
@@ -37,12 +44,17 @@ def _result(record_dict: dict, *, created: bool) -> dict:
     }
 
 
-def _provision_with_store(client: Client, store_dir: Path) -> dict:
+def _provision_with_store(client: Client, store_dir: Path, *, receiver_pool=None) -> dict:
     """Run the existing provisioning code, scoped to a specific store dir.
 
     `provision_client` reads/writes the store via store.default_store_dir(),
     which uses Path.cwd() / .data — so we chdir to the parent of store_dir
     for the duration of the call, then restore.
+
+    `receiver_pool` is optional. When set, we seed a default reminder
+    config for the newly-provisioned client. Skipping the seed in
+    receiver-DB-less environments is fine: the receiver's scheduler
+    falls back to env defaults.
     """
     import os
 
@@ -57,6 +69,28 @@ def _provision_with_store(client: Client, store_dir: Path) -> dict:
         os.chdir(prev)
     # Refresh the manifest each time so the dashboard list stays in sync.
     store.write_manifest(store_dir=store_dir)
+
+    # Seed a default reminder config so this client has a working policy
+    # from the moment they're added. Idempotent re-provisions (re-running
+    # the same client) leave any existing config untouched — we only
+    # write when no row exists.
+    if receiver_pool is not None and result.record.slug:
+        try:
+            existing = reminders_mod.get_config(receiver_pool, result.record.slug)
+            if existing.is_default:
+                reminders_mod.set_config(
+                    receiver_pool, result.record.slug,
+                    offsets_min=list(_DEFAULT_OFFSETS),
+                    recipients=list(_DEFAULT_RECIPIENTS),
+                )
+        except Exception as exc:  # noqa: BLE001
+            # Reminder seed failure must not invalidate the provision —
+            # we can always re-seed via the admin-ui Reminders card.
+            log.warning(
+                "provision: reminder seed failed for %s: %s — continuing",
+                result.record.email, exc,
+            )
+
     return _result(result.record.to_dict(), created=result.created)
 
 
@@ -73,7 +107,7 @@ def provision_single(body: SingleClientBody, request: Request, _=Depends(require
     )
     sdir = request.app.state.settings.store_dir
     try:
-        return _provision_with_store(client, sdir)
+        return _provision_with_store(client, sdir, receiver_pool=getattr(request.app.state, "receiver_pool", None))
     except ProvisionError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -126,7 +160,7 @@ def provision_batch(
             continue
 
         try:
-            res = _provision_with_store(client, sdir)
+            res = _provision_with_store(client, sdir, receiver_pool=getattr(request.app.state, "receiver_pool", None))
             rows.append({
                 "row": i,
                 "ok": True,

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, ShieldCheck, AlertCircle, UserPlus, Upload } from "lucide-react";
+import { Users, ShieldCheck, AlertCircle, UserPlus, Upload, Calendar, Bell } from "lucide-react";
 import { adminApi } from "@/lib/api";
 import { requireToken } from "@/lib/server-session";
 import { AppShell } from "@/components/AppShell";
@@ -8,11 +8,15 @@ import { ClientsTable } from "@/components/ClientsTable";
 
 export default async function Dashboard() {
   const { token, email } = await requireToken();
-  const { clients } = await adminApi.listClients(token);
+  const { clients, totals } = await adminApi.listClients(token);
 
   const platformCount = clients.filter((c) => c.webhook_coverage === "platform").length;
   const perUserCount = clients.filter((c) => c.webhook_coverage === "per-user").length;
   const noneCount = clients.filter((c) => c.webhook_coverage === "none").length;
+  const driftCount = totals.clients_with_drift;
+  // Drift + missing-webhook both warrant a look — fold into a single
+  // "needs attention" counter on the stat card.
+  const attentionCount = perUserCount + noneCount + driftCount;
   const publicBase = process.env.CAL_PUBLIC_BASE || "http://localhost:3000";
 
   return (
@@ -37,26 +41,50 @@ export default async function Dashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 mb-6">
           <Stat label="Total clients" value={clients.length} Icon={Users} tone="brand" />
+          <Stat
+            label="Meetings booked"
+            value={totals.meetings_total}
+            Icon={Calendar}
+            tone="brand"
+            hint={
+              totals.meetings_total === 0
+                ? "Nothing yet"
+                : `${totals.meetings_created} active · ${totals.meetings_cancelled} cancelled`
+            }
+          />
+          <Stat
+            label="Reminders queued"
+            value={totals.reminders_pending_24h}
+            Icon={Bell}
+            tone="brand"
+            hint={
+              totals.reminders_pending_24h === 0
+                ? "Nothing due in 24h"
+                : `${totals.reminders_by_status.sent} sent · ${totals.reminders_by_status.failed} failed total`
+            }
+          />
           <Stat
             label="Platform webhook"
             value={platformCount}
             Icon={ShieldCheck}
             tone="success"
-            hint={platformCount === clients.length && clients.length > 0 ? "All clients covered" : "Bookings flow through receiver"}
+            hint={platformCount === clients.length && clients.length > 0 ? "All covered" : "Through receiver"}
           />
           <Stat
             label="Needs attention"
-            value={perUserCount + noneCount}
+            value={attentionCount}
             Icon={AlertCircle}
-            tone={perUserCount + noneCount === 0 ? "success" : "warn"}
+            tone={attentionCount === 0 ? "success" : "warn"}
             hint={
               noneCount > 0
-                ? `${noneCount} with no webhook`
-                : perUserCount > 0
-                  ? `${perUserCount} on legacy per-user webhook`
-                  : "All good"
+                ? `${noneCount} no webhook`
+                : driftCount > 0
+                  ? `${driftCount} renamed`
+                  : perUserCount > 0
+                    ? `${perUserCount} legacy webhook`
+                    : "All good"
             }
           />
         </div>

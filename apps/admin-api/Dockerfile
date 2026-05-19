@@ -15,7 +15,8 @@ RUN pip install --upgrade pip && \
         'httpx>=0.27' \
         'pyjwt[crypto]>=2.8' \
         'python-multipart>=0.0.18' \
-        'email-validator>=2.0'
+        'email-validator>=2.0' \
+        'psycopg[binary,pool]>=3.2'
 
 COPY packages/shared /app/packages/shared
 RUN pip install --no-deps /app/packages/shared

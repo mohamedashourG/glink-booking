@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, Sparkles, Clock, ShieldCheck, CalendarHeart } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { requireToken } from "@/lib/server-session";
 import { adminApi } from "@/lib/api";
 import { AppShell } from "@/components/AppShell";
@@ -13,7 +13,7 @@ export default async function NewClientPage() {
   const existingSlugs = clients.map((c) => c.slug.toLowerCase());
   return (
     <AppShell adminEmail={email}>
-      <main className="mx-auto max-w-5xl px-8 py-8 animate-fade-in">
+      <main className="mx-auto max-w-3xl px-8 py-10 animate-fade-in">
         <Link
           href="/"
           className="inline-flex items-center gap-1 text-sm text-ink-500 hover:text-ink-900 transition-colors"
@@ -22,59 +22,50 @@ export default async function NewClientPage() {
           All clients
         </Link>
 
-        <div className="mt-4 flex items-end justify-between gap-3 flex-wrap">
-          <div>
-            <h1 className="text-[1.65rem] font-semibold text-ink-900 tracking-tight">Add a client</h1>
-            <p className="mt-1 text-sm text-ink-500">
-              We&apos;ll create the bookings@glnkco.com login, set up the standard 30-minute event type, and surface the booking link.
-            </p>
-          </div>
-        </div>
+        <header className="mt-6 mb-8">
+          <h1 className="text-2xl font-semibold text-ink-900 tracking-tight">Add a client</h1>
+          <p className="mt-1.5 text-sm text-ink-500">
+            We&apos;ll create the bookings@glnkco.com login, set up the standard 30-minute event type, and surface the booking link.
+          </p>
+        </header>
 
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-6">
-          <div className="card card-pad">
-            <NewClientForm existingSlugs={existingSlugs} />
-          </div>
+        <NewClientForm existingSlugs={existingSlugs} />
 
-          <aside className="space-y-3">
-            <h2 className="eyebrow px-1">What happens next</h2>
-            <Pip
-              Icon={Sparkles}
-              title="Cal.diy account is created"
-              body="A new login is provisioned with the email you provide. We capture a one-time first-login password."
-            />
-            <Pip
-              Icon={Clock}
-              title="Schedule is configured"
-              body="Working hours apply to the client's timezone. Buffers of 15 min before/after, 4 h minimum notice, 60-day window."
-            />
-            <Pip
-              Icon={CalendarHeart}
-              title="30-min event type"
-              body="Standard policy: max 5 bookings/day, name + email + 'What would you like to discuss?'."
-            />
-            <Pip
-              Icon={ShieldCheck}
-              title="Webhook coverage"
-              body="The platform-wide webhook covers the new client automatically — no extra setup."
-            />
-          </aside>
-        </div>
+        {/* Slim, inline footer instead of a sidebar. Same information as
+            the previous 'What happens next' cards, but tucked under the
+            form so the eye isn't competing with it during data entry. */}
+        <footer className="mt-12 pt-6 border-t border-ink-100">
+          <div className="text-[0.7rem] font-semibold uppercase tracking-[0.08em] text-ink-500 mb-3">
+            What happens next
+          </div>
+          <ul className="space-y-2 text-sm text-ink-600">
+            <NextStep n={1}>
+              <strong className="text-ink-900">Cal.diy account is created</strong> with the email you provide.
+              We capture a one-time first-login password.
+            </NextStep>
+            <NextStep n={2}>
+              <strong className="text-ink-900">Schedule is configured</strong> in the client&apos;s timezone with 15-min buffers,
+              4-hour minimum notice, and a 60-day window.
+            </NextStep>
+            <NextStep n={3}>
+              <strong className="text-ink-900">30-minute event type</strong> with the standard policy
+              (max 5 bookings/day, name + email + &ldquo;What would you like to discuss?&rdquo;).
+            </NextStep>
+            <NextStep n={4}>
+              <strong className="text-ink-900">Webhook coverage</strong> is automatic — the platform-wide webhook covers the new client.
+            </NextStep>
+          </ul>
+        </footer>
       </main>
     </AppShell>
   );
 }
 
-function Pip({ Icon, title, body }: { Icon: typeof Sparkles; title: string; body: string }) {
+function NextStep({ n, children }: { n: number; children: React.ReactNode }) {
   return (
-    <div className="card p-4 flex gap-3 items-start">
-      <div className="rounded-lg bg-brand-100 text-brand-700 p-2 shrink-0">
-        <Icon className="h-4 w-4" />
-      </div>
-      <div className="min-w-0">
-        <div className="text-sm font-medium text-ink-900">{title}</div>
-        <p className="text-xs text-ink-500 mt-0.5 leading-relaxed">{body}</p>
-      </div>
-    </div>
+    <li className="flex gap-3">
+      <span className="text-ink-400 tabular-nums w-4 shrink-0 mt-0.5">{n}.</span>
+      <span>{children}</span>
+    </li>
   );
 }

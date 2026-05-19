@@ -6,12 +6,74 @@
 const ADMIN_API_BASE = process.env.ADMIN_API_BASE || "http://localhost:8002";
 export const SESSION_COOKIE = process.env.ADMIN_UI_COOKIE_NAME || "glink_admin_ui_session";
 
+export type MeetingCounts = {
+  total: number;
+  created: number;
+  rescheduled: number;
+  cancelled: number;
+  rejected: number;
+  last_at: string | null; // ISO 8601, or null
+};
+
 export type ListedClient = {
-  slug: string;
+  slug: string;                         // stored slug from the manifest
+  live_username: string | null;         // current cal.diy username (null if pool absent)
+  effective_slug: string;               // live_username when present, else stored slug
+  drift: boolean;                       // stored slug != live username
   full_name: string;
   email: string;
   calendly_url: string | null;
   webhook_coverage: "platform" | "per-user" | "none";
+  meetings: MeetingCounts;
+};
+
+export type ReminderRole = "prospect" | "host" | "agency";
+
+export type ReminderConfig = {
+  offsets_min: number[];        // sorted desc by admin-api
+  recipients: ReminderRole[];
+  is_default: boolean;           // true = no per-client row exists; effective config is env-default
+  updated_at: string | null;     // ISO 8601 or null
+};
+
+export type ReminderStatusCounts = {
+  pending: number;
+  processing: number;
+  sent: number;
+  failed: number;
+  cancelled: number;
+};
+
+export type ListClientsTotals = {
+  meetings_total: number;
+  meetings_created: number;
+  meetings_rescheduled: number;
+  meetings_cancelled: number;
+  meetings_rejected: number;
+  clients_with_drift: number;
+  reminders_pending_24h: number;
+  reminders_by_status: ReminderStatusCounts;
+};
+
+export type BookingRow = {
+  cal_booking_uid: string;
+  current_event: "BOOKING_CREATED" | "BOOKING_RESCHEDULED" | "BOOKING_CANCELLED" | "BOOKING_REJECTED";
+  prospect_name: string | null;
+  prospect_email: string | null;
+  prospect_company: string | null;
+  scheduled_at: string | null; // ISO 8601
+  timezone: string | null;
+  video_link: string | null;
+  received_at: string;         // ISO 8601
+  reminders?: ReminderStatusCounts; // present on detail responses; undefined on list rows
+};
+
+export type SlugCheck = {
+  slug: string;
+  valid_format: boolean;
+  taken_in_manifest: boolean;
+  taken_in_cal: boolean | null; // null = couldn't check (pool absent or query failed)
+  available: boolean;            // convenience: format ok AND neither side reports taken
 };
 
 export type ProvisionedRecord = {
@@ -33,7 +95,13 @@ export type ProvisionedRecord = {
 
 export type ClientDetail = {
   record: ProvisionedRecord;
+  live_username: string | null;
+  effective_slug: string;
+  drift: boolean;
   webhook_coverage: "platform" | "per-user" | "none";
+  meetings: MeetingCounts;
+  bookings: BookingRow[];
+  reminder_config: ReminderConfig;
 };
 
 export type ProvisionResponse = {
@@ -88,7 +156,13 @@ export const adminApi = {
 
   me: (token: string) => call<{ email: string; role: string; expires_at: number }>("/auth/me", {}, token),
 
-  listClients: (token: string) => call<{ clients: ListedClient[] }>("/clients", {}, token),
+  listClients: (token: string) =>
+    call<{ clients: ListedClient[]; totals: ListClientsTotals }>("/clients", {}, token),
+
+  /** Live slug check against cal.diy + local manifest. Used by the
+   *  new-client form for inline pre-submit validation. */
+  checkSlug: (slug: string, token: string) =>
+    call<SlugCheck>(`/slug-available?slug=${encodeURIComponent(slug)}`, {}, token),
 
   getClient: (slug: string, token: string) => call<ClientDetail>(`/clients/${encodeURIComponent(slug)}`, {}, token),
 
@@ -107,4 +181,17 @@ export const adminApi = {
     fd.append("file", csv);
     return call<{ results: BatchResultRow[] }>("/provision/batch", { method: "POST", body: fd }, token);
   },
+
+  /** Update the per-client reminder policy. Server validates + normalizes;
+   *  the returned config is what was actually stored. */
+  setReminderConfig: (
+    slug: string,
+    token: string,
+    body: { offsets_min: number[]; recipients: ReminderRole[] },
+  ) =>
+    call<{ ok: true; slug: string; config: ReminderConfig }>(
+      `/clients/${encodeURIComponent(slug)}/reminders`,
+      { method: "PUT", body: JSON.stringify(body) },
+      token,
+    ),
 };

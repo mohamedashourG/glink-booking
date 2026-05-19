@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const SESSION_COOKIE = process.env.ADMIN_UI_COOKIE_NAME || "glink_admin_ui_session";
-const PUBLIC_PATHS = ["/login"];
+// /login is the public admin path. /portal/* hosts the cal.diy iframe
+// payload — auth happens via the JWT in the URL, not the admin cookie.
+const PUBLIC_PATHS = ["/login", "/portal"];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

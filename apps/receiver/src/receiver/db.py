@@ -54,11 +54,12 @@ def insert_booking(
             scheduled_at,
             timezone,
             video_link,
+            host_email,
             utm_source, utm_medium, utm_campaign, utm_content, utm_term,
             custom_responses_json,
             raw_payload_json
         ) VALUES (
-            %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
             %s, %s, %s, %s, %s,
             %s, %s
         )
@@ -75,6 +76,7 @@ def insert_booking(
         booking.scheduled_at,
         booking.timezone,
         booking.video_link,
+        booking.host_email,
         booking.utm["utm_source"],
         booking.utm["utm_medium"],
         booking.utm["utm_campaign"],
